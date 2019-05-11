@@ -1,0 +1,319 @@
+#!/usr/bin/env python3
+
+import base64
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+class CustomException(Exception):
+    pass
+
+def usage():
+    print("usage: %s upload <trace-dir> [<source-path>...]"%sys.argv[0], file=sys.stderr)
+    print("Only source files under the given path(s) will be uploaded.", file=sys.stderr)
+    sys.exit(1)
+
+if len(sys.argv) < 3 or sys.argv[1] != 'upload':
+    usage()
+trace_dir = sys.argv[2]
+source_dirs = []
+for path in sys.argv[3:]:
+    # Apply realpath since our processing below depends on that
+    source_dirs.append(os.path.realpath(path))
+if not os.path.isfile("%s/version"%trace_dir):
+    print("Can't find rr trace in %s"%trace_dir, file=sys.stderr)
+    sys.exit(1)
+
+if not 'PERNOSCO_USER_ID' in os.environ:
+    print("PERNOSCO_USER_ID not set", file=sys.stderr)
+    sys.exit(1)
+pernosco_user_id = os.environ['PERNOSCO_USER_ID']
+if not 'PERNOSCO_USER_SECRET_KEY' in os.environ:
+    print("PERNOSCO_USER_SECRET_KEY not set", file=sys.stderr)
+    sys.exit(1)
+pernosco_user_secret_key = os.environ['PERNOSCO_USER_SECRET_KEY']
+if not 'PERNOSCO_GROUP' in os.environ:
+    print("PERNOSCO_GROUP not set", file=sys.stderr)
+    sys.exit(1)
+pernosco_group = os.environ['PERNOSCO_GROUP']
+
+def set_request_id():
+    binary_trace_id = subprocess.check_output(['rr', 'traceid', trace_dir])
+    trace_id = base64.urlsafe_b64encode(binary_trace_id)[:22].decode('utf-8')
+    request_id = "%s/user/%s/%s"%(pernosco_group, pernosco_user_id, trace_id)
+    os.makedirs("%s/files.pernosco"%trace_dir, exist_ok=True)
+    print("Setting request ID to '%s'..."%request_id)
+    with open('%s/files.pernosco/request-id'%trace_dir, "wt") as f:
+        print(request_id, file=f)
+    return (trace_id, request_id)
+
+(trace_id, request_id) = set_request_id()
+
+def rr_pack():
+    print("Running 'rr pack'...")
+    subprocess.check_call(['rr', 'pack', trace_dir])
+
+def package_libthread_db():
+    for f in ['/usr/lib64/libthread_db.so',
+              '/usr/lib/x86_64-linux-gnu/libthread_db.so']:
+        if os.path.isfile(f):
+            os.makedirs('%s/files.system-debuginfo'%trace_dir, exist_ok=True)
+            print("Copying %s into trace..."%f)
+            shutil.copyfile(f, '%s/files.system-debuginfo/libthread_db.so'%trace_dir)
+            break
+
+# Computes the files under repo_path that aren't fully committed to HEAD
+# (i.e. ignored, untracked, modified in the working area, modified in the git index).
+# returns the result as a hash-set.
+def git_changed_files(repo_path, files):
+    h = {}
+    for f in files:
+        h[f] = True
+    git = subprocess.Popen(['git', 'status', '--untracked-files=all', '--ignored', '--short'],
+                           cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8')
+    ret = {}
+    for line in git.stdout:
+        if line[2] != ' ':
+            raise CustomException("Unexpected line: %s"%line)
+        file = line[3:].rstrip()
+        if file in h:
+            ret[file] = True
+    git.wait()
+    return ret
+
+github_http_re = re.compile('https://github.com/([^/]+)/(.*)')
+googlesource_re = re.compile('https://([^.]+.googlesource.com)/(.*)')
+
+def strip(s, m):
+    if s.endswith(m):
+        return s[:(len(s) - len(m))]
+    return s
+
+def git_remote_url_to_source_url_generator(remote_url):
+    m = github_http_re.match(remote_url)
+    if m:
+        return lambda rev: ("https://raw.githubusercontent.com/%s/%s/%s/"%(m.group(1), strip(m.group(2), ".git"), rev), None)
+    m = googlesource_re.match(remote_url)
+    if m:
+        # googlesource uses gitiles
+        return lambda rev: ("https://%s/%s/+/%s/"%(m.group(1), m.group(2), rev), "?format=TEXT")
+
+# Returns a hash of remote names to generators of URLs Pernosco can use to fetch files
+def git_remotes(repo_path):
+    output = subprocess.check_output(['git', 'remote', '--verbose'], cwd=repo_path, encoding="utf-8")
+    ret = {}
+    for line in output.splitlines():
+        [remote, url, token] = line.split()[:3]
+        if token != "(fetch)":
+            continue
+        url_generator = git_remote_url_to_source_url_generator(url)
+        if url_generator:
+            ret[remote] = url_generator
+    return ret
+
+def git_find_rev(repo_path, remotes):
+    git = subprocess.Popen(['git', 'log', '--format=%H %D'],
+                           cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8')
+    for line in git.stdout:
+        revision = line.split()[0]
+        for token in line.split():
+            if "/" in token:
+                remote = token.split('/')[0]
+                if remote in remotes:
+                    git.kill()
+                    git.wait()
+                    return (revision, remote)
+    git.wait()
+    return None
+
+def git_committed_files(repo_path, revision, files):
+    h = {}
+    for f in files:
+        h[f] = True
+    git = subprocess.Popen(['git', 'diff', '--name-only', revision, 'HEAD'],
+                           cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8')
+    ret = {}
+    for line in git.stdout:
+        file = line.rstrip()
+        if file in h:
+            ret[file] = True
+    git.wait()
+    return ret
+
+def analyze_git_repo(repo_path, files):
+    remotes = git_remotes(repo_path)
+    if len(remotes) == 0:
+        print("No remotes found for Git repo %s, packaging files instead..."%repo_path)
+        return (None, files)
+    r = git_find_rev(repo_path, remotes)
+    if not r:
+        print("Can't find usable remote master for Git repo %s, packaging files instead..."%repo_path)
+        return (None, files)
+    (revision, remote) = r
+    (url, url_suffix) = remotes[remote](revision)
+    print("Expecting Git repo at %s to be accessible at %s"%(repo_path, url))
+    print("Git repo at %s: Checking for files changed since revision %s in remote %s (access via %s)..."%(repo_path, revision, remote, url), end="")
+    # Collect files changed between `revision` and HEAD
+    out_files = git_committed_files(repo_path, revision, files)
+    # Collect files changed between HEAD and working dir
+    changed_files = git_changed_files(repo_path, files)
+    out_files_len = len(out_files)
+    out_files.update(changed_files)
+    if len(out_files) == 0:
+        print(" no changes")
+    else:
+        print(" %d files with committed changes, %d files changed since HEAD, %d overall"%(out_files_len, len(changed_files), len(out_files)))
+    mount = {'url': url, 'at': repo_path}
+    if url_suffix:
+         mount['urlSuffix'] = url_suffix
+    return (mount, out_files)
+
+def analyze_repo(repo_path, files):
+    if os.path.isdir(os.path.join(repo_path, ".git")):
+        return analyze_git_repo(repo_path, files)
+    # XXX support Mercurial etc
+    return (None, files)
+
+disallowed_file_count = 0;
+
+def allowed_file(file):
+    global disallowed_file_count
+    for f in source_dirs:
+        if file.startswith(f):
+            return True
+    disallowed_file_count += 1
+    if disallowed_file_count <= 10:
+        print("Skipping file %s because it's not in the list of allowed source dirs"%file)
+    if disallowed_file_count == 11:
+        print("(too many disallowed-file warnings, suppressing the rest)")
+    return False
+
+def package_source_files():
+    print("Obtaining source file list...")
+    output = subprocess.check_output(['rr', 'sources', trace_dir]).decode('utf-8')
+    rr_sources = json.loads(output)
+    out_sources = {};
+    or_condition = [];
+    for b in rr_sources['relevant_binaries']:
+        or_condition.append({'binary':b})
+    out_sources['condition'] = {'or': or_condition}
+    explicit_files = []
+    out_mounts = []
+    repo_paths = []
+    non_repo_files_count = 0;
+    # Mount repos
+    for repo_path in rr_sources['files']:
+        files = rr_sources['files'][repo_path]
+        if repo_path == '':
+            non_repo_files_count = len(files)
+            explicit_files.extend(files)
+            continue
+        repo_paths.append(repo_path)
+        (repo_mount, modified_files) = analyze_repo(repo_path, files)
+        for m in modified_files:
+            explicit_files.append(os.path.join(repo_path, m))
+        if repo_mount == None:
+            continue
+        out_mounts.append(repo_mount)
+    # Install non-repo files
+    if len(explicit_files) > 0:
+        print("Packaging %d modified and %d non-repository files..."%(len(explicit_files) - non_repo_files_count, non_repo_files_count))
+        os.makedirs("%s/files.user"%trace_dir, exist_ok=True)
+        file_list = '\n'.join(filter(allowed_file, explicit_files))
+        with tempfile.TemporaryFile(mode="w+t", encoding='utf-8') as zip_input:
+            zip_input.write(file_list)
+            zip_input.seek(0)
+            subprocess.check_call(['zip', '-@', '%s/files.user/sources.zip'%trace_dir], stdin=zip_input, stdout=subprocess.DEVNULL)
+        out_mounts.append({'archive': 'files.user/sources.zip', 'at': '/'})
+    # Add symlinks
+    for s in rr_sources['symlinks']:
+        out_mounts.append({'at': s['to'], 'link': s['from']})
+    # Dump output
+    out_sources['files'] = out_mounts
+    out_sources['relevance'] = 'Relevant'
+    with open('%s/sources.user'%trace_dir, "wt") as f:
+        json.dump([out_sources], f, indent=2)
+    return repo_paths
+
+# The files under these paths are copied into gdbinit/
+gdb_paths = [
+    # Mozilla
+    '.gdbinit',
+    '.gdbinit_python',
+    'third_party/python/gdbpp',
+    # Chromium
+    'tools/gdb',
+    'third_party/libcxx-pretty-printers',
+    'third_party/blink/tools/gdb',
+]
+
+def package_gdbinit(repo_paths):
+    gdbinit_dir = "%s/gdbinit"%trace_dir
+    gdbinit_sub_paths = []
+    for repo in repo_paths:
+        sub_path = repo.replace("/", "_");
+        for g in gdb_paths:
+            path = os.path.join(repo, g)
+            out_path = "%s/%s/%s"%(gdbinit_dir, sub_path, g)
+            os.makedirs(os.path.basename(out_path), exist_ok=True)
+            if os.path.isfile(path):
+                print("Copying file %s into trace"%path)
+                shutil.copy(path, out_path)
+            elif os.path.isdir(path):
+                print("Copying tree %s into trace"%path)
+                shutil.rmtree(out_path, ignore_errors=True)
+                shutil.copytree(path, out_path, copy_function=shutil.copy)
+        # Install our own Pernosco-compatible .gdbinit for Chromium
+        if os.path.isfile("%s/%s/tools/gdb/gdb_chrome.py"%(gdbinit_dir, sub_path)):
+            with open("%s/%s/.gdbinit"%(gdbinit_dir, sub_path), "wt") as f:
+                f.write("""python
+import sys
+sys.path.insert(0, "/trace/gdbinit/%s/tools/gdb/")
+sys.path.insert(0, "/trace/gdbinit/%s/third-party/libcxx-pretty-printers/")
+import gdb_chrome
+from libcxx.v1.printers import register_libcxx_printers
+register_libcxx_printers(None)
+gdb.execute('source /trace/gdbinit/%s/tools/gdb/viewg.gdb')
+end
+"""%(sub_path, sub_path, sub_path))
+        if os.path.isfile("%s/%s/.gdbinit"%(gdbinit_dir, sub_path)):
+            gdbinit_sub_paths.append(sub_path)
+    with open("%s/.gdbinit"%gdbinit_dir, "wt") as f:
+        for sub_path in gdbinit_sub_paths:
+            print("directory /trace/gdbinit/%s"%sub_path, file=f)
+            print("source /trace/gdbinit/%s/.gdbinit"%sub_path, file=f)
+
+def upload():
+    [aws_access_key_id, aws_secret_access_key, pernosco_secret_key] = pernosco_user_secret_key.split(',')
+    with tempfile.NamedTemporaryFile(mode="w+b") as payload_file:
+        print("Compressing to %s..."%payload_file.name)
+        with tempfile.TemporaryFile(mode="w+t", encoding='utf-8') as key_file:
+            print("-----BEGIN EC PRIVATE KEY-----\n%s\n-----END EC PRIVATE KEY-----"%pernosco_secret_key, file=key_file)
+            key_file.seek(0)
+            p0 = subprocess.Popen(["tar", "-I", "zstdmt", "-cf", "-", "."], cwd=trace_dir, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            p1 = subprocess.Popen(["tee", payload_file.name], stdin=p0.stdout, stdout=subprocess.PIPE)
+            p0.stdout.close()
+            os.set_inheritable(key_file.fileno(), True)
+            p2 = subprocess.Popen(["openssl", "dgst", "-sha256", "-sign", "/proc/self/fd/%d"%key_file.fileno()], close_fds=False, stdin=p1.stdout, stdout=subprocess.PIPE)
+            p1.stdout.close()
+            (out, err) = p2.communicate()
+        if err:
+            raise CustomException("openssl failed: %s"%err)
+        signature = base64.urlsafe_b64encode(out).decode('utf-8')
+        s3_url = "s3://pernosco-upload/%s.tar.zst"%trace_id
+        print("Uploading to %s..."%s3_url)
+        s3_env = dict(os.environ,
+            AWS_DEFAULT_REGION='us-east-2',
+            AWS_ACCESS_KEY_ID=aws_access_key_id,
+            AWS_SECRET_ACCESS_KEY=aws_secret_access_key)
+        subprocess.check_output(["aws", "s3", "cp", "--metadata", "request-id=%s,signature=%s"%(request_id, signature), payload_file.name, s3_url], env=s3_env)
+
+rr_pack()
+package_libthread_db()
+repo_paths = package_source_files()
+package_gdbinit(repo_paths)
+upload()
