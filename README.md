@@ -13,6 +13,8 @@ The following environment variables must be set:
 
 Run
 ```
-pernosco-submit upload <rr-trace-dir>
+pernosco-submit upload <rr-trace-dir> [<source-dir>...]
 ```
 The rr trace directory will be packaged and uploaded. This may take a while and send many gigabytes of data to Amazon S3.
+
+Only source files under the `<source-dir>`s will be packaged. This will help avoid accidental uploads of confidental files.
