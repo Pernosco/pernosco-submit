@@ -14,11 +14,39 @@ class CustomException(Exception):
 
 def usage():
     print("usage: %s upload <trace-dir> [<source-path>...]"%sys.argv[0], file=sys.stderr)
+    print("       %s keygen <provided-secret>"%sys.argv[0], file=sys.stderr)
     print("Only source files under the given path(s) will be uploaded.", file=sys.stderr)
     sys.exit(1)
 
-if len(sys.argv) < 3 or sys.argv[1] != 'upload':
+def strip_wrapper(s):
+    ret = ""
+    for line in s.splitlines():
+        if line.startswith("----"):
+            continue
+        ret += line.strip()
+    return ret
+
+def keygen():
+    if len(sys.argv) != 3:
+        usage()
+    provided = sys.argv[2]
+    if len(provided.split(',')) != 2:
+        print("Invalid <provided-secret> argument", file=sys.stderr)
+    full_key = subprocess.check_output(['openssl', 'ecparam', '-genkey', '-name', 'prime256v1', '-noout'], encoding='utf-8')
+    private_key = subprocess.check_output(['openssl', 'ec', '-no_public'], encoding='utf-8', input=full_key, stderr=subprocess.DEVNULL)
+    public_key = subprocess.check_output(['openssl', 'ec', '-pubout'], encoding='utf-8', input=full_key, stderr=subprocess.DEVNULL)
+    print("Private key: PERNOSCO_USER_SECRET_KEY=%s,%s"%(provided, strip_wrapper(private_key)))
+    print("Public key: %s"%strip_wrapper(public_key))
+    sys.exit(0)
+
+if len(sys.argv) < 2:
     usage()
+cmd = sys.argv[1]
+if cmd == 'keygen':
+    keygen()
+if cmd != 'upload' or len(sys.argv) < 3:
+    usage()
+
 trace_dir = sys.argv[2]
 source_dirs = []
 for path in sys.argv[3:]:
