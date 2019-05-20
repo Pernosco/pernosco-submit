@@ -56,10 +56,10 @@ if not os.path.isfile("%s/version"%trace_dir):
     print("Can't find rr trace in %s"%trace_dir, file=sys.stderr)
     sys.exit(1)
 
-if not 'PERNOSCO_USER_ID' in os.environ:
-    print("PERNOSCO_USER_ID not set", file=sys.stderr)
+if not 'PERNOSCO_USER' in os.environ:
+    print("PERNOSCO_USER not set", file=sys.stderr)
     sys.exit(1)
-pernosco_user_id = os.environ['PERNOSCO_USER_ID']
+pernosco_user_id = os.environ['PERNOSCO_USER']
 if not 'PERNOSCO_USER_SECRET_KEY' in os.environ:
     print("PERNOSCO_USER_SECRET_KEY not set", file=sys.stderr)
     sys.exit(1)
@@ -322,7 +322,7 @@ def upload():
         with tempfile.TemporaryFile(mode="w+t", encoding='utf-8') as key_file:
             print("-----BEGIN EC PRIVATE KEY-----\n%s\n-----END EC PRIVATE KEY-----"%pernosco_secret_key, file=key_file)
             key_file.seek(0)
-            p0 = subprocess.Popen(["tar", "-I", "zstdmt", "-cf", "-", "."], cwd=trace_dir, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            p0 = subprocess.Popen(["tar", "-I", "zstdmt", "--exclude", "db*", "-cf", "-", "."], cwd=trace_dir, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             p1 = subprocess.Popen(["tee", payload_file.name], stdin=p0.stdout, stdout=subprocess.PIPE)
             p0.stdout.close()
             os.set_inheritable(key_file.fileno(), True)
@@ -338,7 +338,10 @@ def upload():
             AWS_DEFAULT_REGION='us-east-2',
             AWS_ACCESS_KEY_ID=aws_access_key_id,
             AWS_SECRET_ACCESS_KEY=aws_secret_access_key)
-        subprocess.check_output(["aws", "s3", "cp", "--metadata", "request-id=%s,signature=%s"%(request_id, signature), payload_file.name, s3_url], env=s3_env)
+        metadata = "request-id=%s,signature=%s"%(request_id, signature)
+        if 'PERNOSCO_EXTRA_METADATA' in os.environ:
+            metadata += ",%s"%os.environ['PERNOSCO_EXTRA_METADATA']
+        subprocess.check_output(["aws", "s3", "cp", "--metadata", metadata, payload_file.name, s3_url], env=s3_env)
 
 rr_pack()
 package_libthread_db()

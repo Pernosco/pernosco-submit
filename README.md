@@ -5,7 +5,7 @@ Submits rr traces to Pernosco for debugging.
 ## Configuration
 
 The following environment variables must be set:
-* `PERNOSCO_USER_ID`: User ID in email address form.
+* `PERNOSCO_USER`: User ID in email address form.
 * `PERNOSCO_USER_SECRET_KEY`: Secret key for that user ID. DO NOT SHARE THIS.
 * `PERNOSCO_GROUP`: Group to upload to, e.g. `public`. Influences who can access the trace and who gets billed.
 
