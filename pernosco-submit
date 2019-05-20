@@ -113,7 +113,8 @@ def git_changed_files(repo_path, files):
     git.wait()
     return ret
 
-github_http_re = re.compile('https://github.com/([^/]+)/(.*)')
+github_re = re.compile('(https://github.com/|git@github.com:)([^/]+)/(.*)')
+gitlab_re = re.compile('(https://gitlab.com/|git@gitlab.com:)([^/]+)/(.*)')
 googlesource_re = re.compile('https://([^.]+.googlesource.com)/(.*)')
 
 def strip(s, m):
@@ -122,9 +123,12 @@ def strip(s, m):
     return s
 
 def git_remote_url_to_source_url_generator(remote_url):
-    m = github_http_re.match(remote_url)
+    m = github_re.match(remote_url)
     if m:
-        return lambda rev: ("https://raw.githubusercontent.com/%s/%s/%s/"%(m.group(1), strip(m.group(2), ".git"), rev), None)
+        return lambda rev: ("https://raw.githubusercontent.com/%s/%s/%s/"%(m.group(2), strip(m.group(3), ".git"), rev), None)
+    m = gitlab_re.match(remote_url)
+    if m:
+        return lambda rev: ("https://gitlab.com/%s/%s/raw/%s/"%(m.group(2), strip(m.group(3), ".git"), rev), None)
     m = googlesource_re.match(remote_url)
     if m:
         # googlesource uses gitiles
