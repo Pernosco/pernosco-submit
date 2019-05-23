@@ -3,11 +3,13 @@
 import base64
 import json
 import os
+import random
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 class CustomException(Exception):
     pass
@@ -69,17 +71,18 @@ if not 'PERNOSCO_GROUP' in os.environ:
     sys.exit(1)
 pernosco_group = os.environ['PERNOSCO_GROUP']
 
+timestamp = round(time.time())
+nonce = format(random.randrange(1 << 64), "=016X")
+
 def set_request_id():
-    binary_trace_id = subprocess.check_output(['rr', 'traceid', trace_dir])
-    trace_id = base64.urlsafe_b64encode(binary_trace_id)[:22].decode('utf-8')
-    request_id = "%s/user/%s/%s"%(pernosco_group, pernosco_user_id, trace_id)
+    request_id = "%s/user/%s/%d/%s"%(pernosco_group, pernosco_user_id, timestamp, nonce)
     os.makedirs("%s/files.pernosco"%trace_dir, exist_ok=True)
     print("Setting request ID to '%s'..."%request_id)
     with open('%s/files.pernosco/request-id'%trace_dir, "wt") as f:
         print(request_id, file=f)
-    return (trace_id, request_id)
+    return request_id
 
-(trace_id, request_id) = set_request_id()
+request_id = set_request_id()
 
 def rr_pack():
     print("Running 'rr pack'...")
@@ -336,7 +339,7 @@ def upload():
         if err:
             raise CustomException("openssl failed: %s"%err)
         signature = base64.urlsafe_b64encode(out).decode('utf-8')
-        s3_url = "s3://pernosco-upload/%s.tar.zst"%trace_id
+        s3_url = "s3://pernosco-upload/%s.tar.zst"%nonce
         print("Uploading to %s..."%s3_url)
         s3_env = dict(os.environ,
             AWS_DEFAULT_REGION='us-east-2',
