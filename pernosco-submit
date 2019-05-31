@@ -97,25 +97,6 @@ def package_libthread_db():
             shutil.copyfile(f, '%s/files.system-debuginfo/libthread_db.so'%trace_dir)
             break
 
-# Computes the files under repo_path that aren't fully committed to HEAD
-# (i.e. ignored, untracked, modified in the working area, modified in the git index).
-# returns the result as a hash-set.
-def git_changed_files(repo_path, files):
-    h = {}
-    for f in files:
-        h[f] = True
-    git = subprocess.Popen(['git', 'status', '--untracked-files=all', '--ignored', '--short'],
-                           cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8')
-    ret = {}
-    for line in git.stdout:
-        if line[2] != ' ':
-            raise CustomException("Unexpected line: %s"%line)
-        file = line[3:].rstrip()
-        if file in h:
-            ret[file] = True
-    git.wait()
-    return ret
-
 github_re = re.compile('(https://github.com/|git@github.com:)([^/]+)/(.*)')
 gitlab_re = re.compile('(https://gitlab.com/|git@gitlab.com:)([^/]+)/(.*)')
 googlesource_re = re.compile('https://([^.]+.googlesource.com)/(.*)')
@@ -136,6 +117,7 @@ def git_remote_url_to_source_url_generator(remote_url):
     if m:
         # googlesource uses gitiles
         return lambda rev: ("https://%s/%s/+/%s/"%(m.group(1), m.group(2), rev), "?format=TEXT")
+    return None
 
 # Returns a hash of remote names to generators of URLs Pernosco can use to fetch files
 def git_remotes(repo_path):
@@ -146,7 +128,7 @@ def git_remotes(repo_path):
         if token != "(fetch)":
             continue
         url_generator = git_remote_url_to_source_url_generator(url)
-        if url_generator:
+        if url_generator != None:
             ret[remote] = url_generator
     return ret
 
@@ -179,6 +161,25 @@ def git_committed_files(repo_path, revision, files):
     git.wait()
     return ret
 
+# Computes the files under repo_path that aren't fully committed to HEAD
+# (i.e. ignored, untracked, modified in the working area, modified in the git index).
+# returns the result as a hash-set.
+def git_changed_files(repo_path, files):
+    h = {}
+    for f in files:
+        h[f] = True
+    git = subprocess.Popen(['git', 'status', '--untracked-files=all', '--ignored', '--short'],
+                           cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8')
+    ret = {}
+    for line in git.stdout:
+        if line[2] != ' ':
+            raise CustomException("Unexpected line: %s"%line)
+        file = line[3:].rstrip()
+        if file in h:
+            ret[file] = True
+    git.wait()
+    return ret
+
 def analyze_git_repo(repo_path, files):
     remotes = git_remotes(repo_path)
     if len(remotes) == 0:
@@ -190,8 +191,7 @@ def analyze_git_repo(repo_path, files):
         return (None, files)
     (revision, remote) = r
     (url, url_suffix) = remotes[remote](revision)
-    print("Expecting Git repo at %s to be accessible at %s"%(repo_path, url))
-    print("Git repo at %s: Checking for files changed since revision %s in remote %s (access via %s)..."%(repo_path, revision, remote, url), end="")
+    print("Git repo at %s: Checking for source files changed since revision %s in remote %s (access via %s)..."%(repo_path, revision, remote, url), end="")
     # Collect files changed between `revision` and HEAD
     out_files = git_committed_files(repo_path, revision, files)
     # Collect files changed between HEAD and working dir
@@ -207,10 +207,87 @@ def analyze_git_repo(repo_path, files):
          mount['urlSuffix'] = url_suffix
     return (mount, out_files)
 
+mozilla_re = re.compile('(https|ssh)://hg.mozilla.org/(.*)')
+
+def hg_remote_url_to_source_url_generator(remote_url):
+    m = mozilla_re.match(remote_url)
+    if m:
+        if m.group(2) == 'try':
+            # Ignore 'try' because it gets purged frequently
+            return None
+        return lambda rev: ("https://hg.mozilla.org/%s/raw-file/%s/"%(m.group(2), rev), None)
+    return None
+
+# Returns a hash of remote names to generators of URLs Pernosco can use to fetch files
+def hg_remotes(repo_path):
+    output = subprocess.check_output(['hg', 'paths'], cwd=repo_path, encoding="utf-8")
+    ret = {}
+    for line in output.splitlines():
+        [remote, equals, url] = line.split()[:3]
+        url_generator = hg_remote_url_to_source_url_generator(url)
+        if url_generator != None:
+            ret[remote] = url_generator
+    return ret
+
+def hg_find_rev(repo_path, remotes):
+    best_rev_num = 0
+    best_sha = None
+    best_remote = None
+    for r in remotes:
+        output = subprocess.check_output(['hg', 'log', '-T', '{rev} {node}', '-r', 'ancestor(parents(outgoing(%s) & ancestors(.)))'%r],
+                                         cwd=repo_path, encoding='utf-8')
+        [rev_num, sha] = output.split()[:2]
+        rev_num = int(rev_num)
+        if rev_num > best_rev_num:
+            best_rev_num = rev_num
+            best_sha = sha
+            best_remote = r
+    if best_rev_num == 0:
+        return None
+    return (best_sha, best_remote)
+
+def hg_changed_files(repo_path, revision, files):
+    h = {}
+    for f in files:
+        h[f] = True
+    hg = subprocess.Popen(['hg', 'status', '-nmaui', '--rev', revision],
+                           cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8')
+    ret = {}
+    for line in hg.stdout:
+        file = line.rstrip()
+        if file in h:
+            ret[file] = True
+    hg.wait()
+    return ret
+
+def analyze_hg_repo(repo_path, files):
+    remotes = hg_remotes(repo_path)
+    if len(remotes) == 0:
+        print("No remotes found for Mercurial repo %s, packaging files instead..."%repo_path)
+        return (None, files)
+    r = hg_find_rev(repo_path, remotes)
+    if not r:
+        print("Can't find usable remote master for Mercurial repo %s, packaging files instead..."%repo_path)
+        return (None, files)
+    (revision, remote) = r
+    (url, url_suffix) = remotes[remote](revision)
+    print("Mercurial repo at %s: Checking for source files changed since revision %s in remote '%s' (access via %s)..."%(repo_path, revision, remote, url), end="")
+    # Collect files changed between `revision` and HEAD
+    out_files = hg_changed_files(repo_path, revision, files)
+    if len(out_files) == 0:
+        print(" no changes")
+    else:
+        print(" %d files changed"%len(out_files))
+    mount = {'url': url, 'at': repo_path}
+    if url_suffix:
+         mount['urlSuffix'] = url_suffix
+    return (mount, out_files)
+
 def analyze_repo(repo_path, files):
     if os.path.isdir(os.path.join(repo_path, ".git")):
         return analyze_git_repo(repo_path, files)
-    # XXX support Mercurial etc
+    if os.path.isdir(os.path.join(repo_path, ".hg")):
+        return analyze_hg_repo(repo_path, files)
     return (None, files)
 
 disallowed_file_count = 0;
@@ -259,10 +336,13 @@ def package_source_files():
         print("Packaging %d modified and %d non-repository files..."%(len(explicit_files) - non_repo_files_count, non_repo_files_count))
         os.makedirs("%s/files.user"%trace_dir, exist_ok=True)
         file_list = '\n'.join(filter(allowed_file, explicit_files))
+        zip_file = '%s/files.user/sources.zip'%trace_dir
+        if os.path.isfile(zip_file):
+            os.remove(zip_file)
         with tempfile.TemporaryFile(mode="w+t", encoding='utf-8') as zip_input:
             zip_input.write(file_list)
             zip_input.seek(0)
-            subprocess.check_call(['zip', '-@', '%s/files.user/sources.zip'%trace_dir], stdin=zip_input, stdout=subprocess.DEVNULL)
+            subprocess.check_call(['zip', '-@', zip_file], stdin=zip_input, stdout=subprocess.DEVNULL)
         out_mounts.append({'archive': 'files.user/sources.zip', 'at': '/'})
     # Add symlinks
     for s in rr_sources['symlinks']:
@@ -294,11 +374,12 @@ def package_gdbinit(repo_paths):
         for g in gdb_paths:
             path = os.path.join(repo, g)
             out_path = "%s/%s/%s"%(gdbinit_dir, sub_path, g)
-            os.makedirs(os.path.basename(out_path), exist_ok=True)
             if os.path.isfile(path):
+                os.makedirs(os.path.dirname(out_path), exist_ok=True)
                 print("Copying file %s into trace"%path)
                 shutil.copy(path, out_path)
             elif os.path.isdir(path):
+                os.makedirs(os.path.dirname(out_path), exist_ok=True)
                 print("Copying tree %s into trace"%path)
                 shutil.rmtree(out_path, ignore_errors=True)
                 shutil.copytree(path, out_path, copy_function=shutil.copy)
