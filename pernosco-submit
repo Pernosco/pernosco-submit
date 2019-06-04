@@ -332,10 +332,10 @@ def package_source_files():
             continue
         out_mounts.append(repo_mount)
     # Install non-repo files
-    if len(explicit_files) > 0:
+    file_list = '\n'.join(filter(allowed_file, explicit_files))
+    if len(file_list) > 0:
         print("Packaging %d modified and %d non-repository files..."%(len(explicit_files) - non_repo_files_count, non_repo_files_count))
         os.makedirs("%s/files.user"%trace_dir, exist_ok=True)
-        file_list = '\n'.join(filter(allowed_file, explicit_files))
         zip_file = '%s/files.user/sources.zip'%trace_dir
         if os.path.isfile(zip_file):
             os.remove(zip_file)
@@ -344,6 +344,8 @@ def package_source_files():
             zip_input.seek(0)
             subprocess.check_call(['zip', '-@', zip_file], stdin=zip_input, stdout=subprocess.DEVNULL)
         out_mounts.append({'archive': 'files.user/sources.zip', 'at': '/'})
+    else:
+        shutil.rmtree("%s/files.user"%trace_dir, ignore_errors=True)
     # Add symlinks
     for s in rr_sources['symlinks']:
         out_mounts.append({'at': s['to'], 'link': s['from']})
