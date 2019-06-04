@@ -32,6 +32,10 @@ def strip_wrapper(s):
 def keygen():
     if len(sys.argv) != 3:
         usage()
+    if not shutil.which('openssl'):
+        print("Please install `openssl`.", file=sys.stderr)
+        sys.exit(1)
+
     provided = sys.argv[2]
     if len(provided.split(',')) != 2:
         print("Invalid <provided-secret> argument", file=sys.stderr)
@@ -49,6 +53,20 @@ if cmd == 'keygen':
     keygen()
 if cmd != 'upload' or len(sys.argv) < 3:
     usage()
+
+if not shutil.which('openssl'):
+    print("Please install `openssl`.", file=sys.stderr)
+    sys.exit(1)
+if not shutil.which('aws'):
+    print("Please install `awscli`.", file=sys.stderr)
+    sys.exit(1)
+if not shutil.which('rr'):
+    print("Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
+    sys.exit(1)
+status = subprocess.run(['rr', 'sources', '/dev/null'], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+if status.returncode != 65:
+    print("rr is out of date. Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
+    sys.exit(1)
 
 trace_dir = sys.argv[2]
 source_dirs = []
