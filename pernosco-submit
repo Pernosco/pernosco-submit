@@ -368,6 +368,7 @@ gdb_paths = [
 
 def package_gdbinit(repo_paths):
     gdbinit_dir = "%s/gdbinit"%trace_dir
+    shutil.rmtree(gdbinit_dir, ignore_errors=True)
     gdbinit_sub_paths = []
     for repo in repo_paths:
         sub_path = repo.replace("/", "_");
@@ -381,7 +382,6 @@ def package_gdbinit(repo_paths):
             elif os.path.isdir(path):
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
                 print("Copying tree %s into trace"%path)
-                shutil.rmtree(out_path, ignore_errors=True)
                 shutil.copytree(path, out_path, copy_function=shutil.copy)
         # Install our own Pernosco-compatible .gdbinit for Chromium
         if os.path.isfile("%s/%s/tools/gdb/gdb_chrome.py"%(gdbinit_dir, sub_path)):
@@ -398,10 +398,11 @@ end
 """%(sub_path, sub_path, sub_path))
         if os.path.isfile("%s/%s/.gdbinit"%(gdbinit_dir, sub_path)):
             gdbinit_sub_paths.append(sub_path)
-    with open("%s/.gdbinit"%gdbinit_dir, "wt") as f:
-        for sub_path in gdbinit_sub_paths:
-            print("directory /trace/gdbinit/%s"%sub_path, file=f)
-            print("source /trace/gdbinit/%s/.gdbinit"%sub_path, file=f)
+    if len(gdbinit_sub_paths) > 0:
+        with open("%s/.gdbinit"%gdbinit_dir, "wt") as f:
+            for sub_path in gdbinit_sub_paths:
+                print("directory /trace/gdbinit/%s"%sub_path, file=f)
+                print("source /trace/gdbinit/%s/.gdbinit"%sub_path, file=f)
 
 def upload():
     [aws_access_key_id, aws_secret_access_key, pernosco_secret_key] = pernosco_user_secret_key.split(',')
