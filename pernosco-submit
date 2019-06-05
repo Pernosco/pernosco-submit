@@ -39,9 +39,9 @@ def keygen():
     provided = sys.argv[2]
     if len(provided.split(',')) != 2:
         print("Invalid <provided-secret> argument", file=sys.stderr)
-    full_key = subprocess.check_output(['openssl', 'ecparam', '-genkey', '-name', 'prime256v1', '-noout'], encoding='utf-8')
-    private_key = subprocess.check_output(['openssl', 'ec', '-no_public'], encoding='utf-8', input=full_key, stderr=subprocess.DEVNULL)
-    public_key = subprocess.check_output(['openssl', 'ec', '-pubout'], encoding='utf-8', input=full_key, stderr=subprocess.DEVNULL)
+    full_key = subprocess.check_output(['openssl', 'ecparam', '-genkey', '-name', 'prime256v1', '-noout']).decode('utf-8')
+    private_key = subprocess.check_output(['openssl', 'ec', '-no_public'], input=full_key, stderr=subprocess.DEVNULL).decode('utf-8')
+    public_key = subprocess.check_output(['openssl', 'ec', '-pubout'], input=full_key, stderr=subprocess.DEVNULL).decode('utf-8')
     print("Private key: PERNOSCO_USER_SECRET_KEY=%s,%s"%(provided, strip_wrapper(private_key)))
     print("Public key: %s"%strip_wrapper(public_key))
     sys.exit(0)
@@ -140,7 +140,7 @@ def git_remote_url_to_source_url_generator(remote_url):
 
 # Returns a hash of remote names to generators of URLs Pernosco can use to fetch files
 def git_remotes(repo_path):
-    output = subprocess.check_output(['git', 'remote', '--verbose'], cwd=repo_path, encoding="utf-8")
+    output = subprocess.check_output(['git', 'remote', '--verbose'], cwd=repo_path).decode('utf-8')
     ret = {}
     for line in output.splitlines():
         [remote, url, token] = line.split()[:3]
@@ -153,8 +153,9 @@ def git_remotes(repo_path):
 
 def git_find_rev(repo_path, remotes):
     git = subprocess.Popen(['git', 'log', '--format=%H %D'],
-                           cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8')
+                           cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     for line in git.stdout:
+        line = line.decode('utf-8')
         revision = line.split()[0]
         for token in line.split():
             if "/" in token:
@@ -171,10 +172,10 @@ def git_committed_files(repo_path, revision, files):
     for f in files:
         h[f] = True
     git = subprocess.Popen(['git', 'diff', '--name-only', revision, 'HEAD'],
-                           cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8')
+                           cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     ret = {}
     for line in git.stdout:
-        file = line.rstrip()
+        file = line.decode('utf-8').rstrip()
         if file in h:
             ret[file] = True
     git.wait()
@@ -188,9 +189,10 @@ def git_changed_files(repo_path, files):
     for f in files:
         h[f] = True
     git = subprocess.Popen(['git', 'status', '--untracked-files=all', '--ignored', '--short'],
-                           cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8')
+                           cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     ret = {}
     for line in git.stdout:
+        line = line.decode('utf-8')
         if line[2] != ' ':
             raise CustomException("Unexpected line: %s"%line)
         file = line[3:].rstrip()
@@ -239,7 +241,7 @@ def hg_remote_url_to_source_url_generator(remote_url):
 
 # Returns a hash of remote names to generators of URLs Pernosco can use to fetch files
 def hg_remotes(repo_path):
-    output = subprocess.check_output(['hg', 'paths'], cwd=repo_path, encoding="utf-8")
+    output = subprocess.check_output(['hg', 'paths'], cwd=repo_path).decode('utf-8')
     ret = {}
     for line in output.splitlines():
         [remote, equals, url] = line.split()[:3]
@@ -254,7 +256,7 @@ def hg_find_rev(repo_path, remotes):
     best_remote = None
     for r in remotes:
         output = subprocess.check_output(['hg', 'log', '-T', '{rev} {node}', '-r', 'ancestor(parents(outgoing(%s) & ancestors(.)))'%r],
-                                         cwd=repo_path, encoding='utf-8')
+                                         cwd=repo_path).decode('utf-8')
         [rev_num, sha] = output.split()[:2]
         rev_num = int(rev_num)
         if rev_num > best_rev_num:
@@ -270,10 +272,10 @@ def hg_changed_files(repo_path, revision, files):
     for f in files:
         h[f] = True
     hg = subprocess.Popen(['hg', 'status', '-nmaui', '--rev', revision],
-                           cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8')
+                           cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     ret = {}
     for line in hg.stdout:
-        file = line.rstrip()
+        file = line.decode('utf-8').rstrip()
         if file in h:
             ret[file] = True
     hg.wait()
