@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import base64
+import hashlib
 import json
 import os
 import random
@@ -29,20 +30,22 @@ def strip_wrapper(s):
         ret += line.strip()
     return ret
 
+def check_executable(executable, package):
+    if not shutil.which(executable):
+        print("Please install `%s`."%package, file=sys.stderr)
+        sys.exit(1)
+
 def keygen():
     if len(sys.argv) != 3:
         usage()
-    if not shutil.which('openssl'):
-        print("Please install `openssl`.", file=sys.stderr)
-        sys.exit(1)
+    check_executable('openssl', 'openssl')
 
     provided = sys.argv[2]
     if len(provided.split(',')) != 2:
         print("Invalid <provided-secret> argument", file=sys.stderr)
-    full_key = subprocess.check_output(['openssl', 'ecparam', '-genkey', '-name', 'prime256v1', '-noout']).decode('utf-8')
-    private_key = subprocess.check_output(['openssl', 'ec', '-no_public'], input=full_key, stderr=subprocess.DEVNULL).decode('utf-8')
+    full_key = subprocess.check_output(['openssl', 'ecparam', '-genkey', '-name', 'prime256v1', '-noout'])
     public_key = subprocess.check_output(['openssl', 'ec', '-pubout'], input=full_key, stderr=subprocess.DEVNULL).decode('utf-8')
-    print("Private key: PERNOSCO_USER_SECRET_KEY=%s,%s"%(provided, strip_wrapper(private_key)))
+    print("Private key: PERNOSCO_USER_SECRET_KEY=%s,%s"%(provided, strip_wrapper(full_key.decode('utf-8'))))
     print("Public key: %s"%strip_wrapper(public_key))
     sys.exit(0)
 
@@ -54,12 +57,9 @@ if cmd == 'keygen':
 if cmd != 'upload' or len(sys.argv) < 3:
     usage()
 
-if not shutil.which('openssl'):
-    print("Please install `openssl`.", file=sys.stderr)
-    sys.exit(1)
-if not shutil.which('aws'):
-    print("Please install `awscli`.", file=sys.stderr)
-    sys.exit(1)
+check_executable('openssl', 'openssl')
+check_executable('aws', 'awscli')
+check_executable('tar', 'tar')
 if not shutil.which('rr'):
     print("Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
     sys.exit(1)
@@ -80,28 +80,23 @@ if not os.path.isfile("%s/version"%trace_dir):
 if not 'PERNOSCO_USER' in os.environ:
     print("PERNOSCO_USER not set", file=sys.stderr)
     sys.exit(1)
-pernosco_user_id = os.environ['PERNOSCO_USER']
-if not 'PERNOSCO_USER_SECRET_KEY' in os.environ:
-    print("PERNOSCO_USER_SECRET_KEY not set", file=sys.stderr)
-    sys.exit(1)
-pernosco_user_secret_key = os.environ['PERNOSCO_USER_SECRET_KEY']
+pernosco_user = os.environ['PERNOSCO_USER']
 if not 'PERNOSCO_GROUP' in os.environ:
     print("PERNOSCO_GROUP not set", file=sys.stderr)
     sys.exit(1)
 pernosco_group = os.environ['PERNOSCO_GROUP']
+if not 'PERNOSCO_USER_SECRET_KEY' in os.environ:
+    print("PERNOSCO_USER_SECRET_KEY not set", file=sys.stderr)
+    sys.exit(1)
+pernosco_user_secret_key = os.environ['PERNOSCO_USER_SECRET_KEY']
 
-timestamp = round(time.time())
-nonce = format(random.randrange(1 << 64), "=016X")
+os.makedirs("%s/files.user"%trace_dir, exist_ok=True)
 
-def set_request_id():
-    request_id = "%s/user/%s/%d/%s"%(pernosco_group, pernosco_user_id, timestamp, nonce)
-    os.makedirs("%s/files.pernosco"%trace_dir, exist_ok=True)
-    print("Setting request ID to '%s'..."%request_id)
-    with open('%s/files.pernosco/request-id'%trace_dir, "wt") as f:
-        print(request_id, file=f)
-    return request_id
-
-request_id = set_request_id()
+def write_metadata():
+    with open('%s/files.user/user'%trace_dir, "wt", encoding='utf-8') as f:
+        print(pernosco_user, file=f)
+    with open('%s/files.user/group'%trace_dir, "wt", encoding='utf-8') as f:
+        print(pernosco_group, file=f)
 
 def rr_pack():
     print("Running 'rr pack'...")
@@ -354,7 +349,6 @@ def package_source_files():
         out_mounts.append(repo_mount)
     # Install non-repo files
     print("Packaging %d modified and %d non-repository files..."%(len(explicit_files) - non_repo_files_count, non_repo_files_count))
-    os.makedirs("%s/files.user"%trace_dir, exist_ok=True)
     with zipfile.ZipFile('%s/files.user/sources.zip'%trace_dir, mode='w', compression=zipfile.ZIP_DEFLATED) as zip_file:
         for f in explicit_files:
             if allowed_file(f):
@@ -431,27 +425,36 @@ def upload():
         with tempfile.TemporaryFile(mode="w+t", encoding='utf-8') as key_file:
             print("-----BEGIN EC PRIVATE KEY-----\n%s\n-----END EC PRIVATE KEY-----"%pernosco_secret_key, file=key_file)
             key_file.seek(0)
+            public_key = subprocess.check_output(['openssl', 'ec', '-pubout'], stdin=key_file, stderr=subprocess.DEVNULL).decode('utf-8')
             p0 = subprocess.Popen(["tar", "-I", "zstdmt", "--exclude", "db*", "-cf", "-", "."], cwd=trace_dir, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             p1 = subprocess.Popen(["tee", payload_file.name], stdin=p0.stdout, stdout=subprocess.PIPE)
             p0.stdout.close()
             os.set_inheritable(key_file.fileno(), True)
             p2 = subprocess.Popen(["openssl", "dgst", "-sha256", "-sign", "/proc/self/fd/%d"%key_file.fileno()], close_fds=False, stdin=p1.stdout, stdout=subprocess.PIPE)
             p1.stdout.close()
-            (out, err) = p2.communicate()
+            (sig, err) = p2.communicate()
         if err:
             raise CustomException("openssl failed: %s"%err)
-        signature = base64.urlsafe_b64encode(out).decode('utf-8')
+        signature = base64.urlsafe_b64encode(sig).decode('utf-8')
+        # Create a nonce that's 64 bits of the SHA256 of the signature.
+        hasher = hashlib.sha256()
+        hasher.update(sig)
+        # Strip '=' because it requires %-encoding in URLs
+        nonce = base64.urlsafe_b64encode(hasher.digest()[:8]).decode('utf-8').rstrip('=')
         s3_url = "s3://pernosco-upload/%s.tar.zst"%nonce
         print("Uploading to %s..."%s3_url)
         s3_env = dict(os.environ,
             AWS_DEFAULT_REGION='us-east-2',
             AWS_ACCESS_KEY_ID=aws_access_key_id,
             AWS_SECRET_ACCESS_KEY=aws_secret_access_key)
-        metadata = "request-id=%s,signature=%s"%(request_id, signature)
+        # Send the public key with the signature so the server can easily
+        # determine which key was used and check that the key is authorized
+        metadata = "publickey=%s,signature=%s,user=%s,group=%s"%(strip_wrapper(public_key), signature, pernosco_user, pernosco_group)
         if 'PERNOSCO_EXTRA_METADATA' in os.environ:
             metadata += ",%s"%os.environ['PERNOSCO_EXTRA_METADATA']
-        subprocess.check_output(["aws", "s3", "cp", "--metadata", metadata, payload_file.name, s3_url], env=s3_env)
+        subprocess.check_call(["aws", "s3", "cp", "--metadata", metadata, payload_file.name, s3_url], env=s3_env)
 
+write_metadata()
 rr_pack()
 package_libthread_db()
 repo_paths = package_source_files()
