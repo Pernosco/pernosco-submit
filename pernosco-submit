@@ -61,7 +61,7 @@ check_executable('openssl', 'openssl')
 check_executable('tar', 'tar')
 if not shutil.which('aws'):
     print("Please install the AWS command-line tools using", file=sys.stderr)
-    print("  pip3 install awscli --upgrade --user", file=sys.stderr)
+    print("  sudo pip3 install awscli --upgrade", file=sys.stderr)
     print("(Distribution packages may fail due to https://github.com/aws/aws-cli/issues/2403.)", file=sys.stderr)
     sys.exit(1)
 if not shutil.which('rr'):
