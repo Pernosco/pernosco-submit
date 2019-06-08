@@ -446,7 +446,7 @@ def upload():
         # Strip '=' because it requires %-encoding in URLs
         nonce = base64.urlsafe_b64encode(hasher.digest()[:8]).decode('utf-8').rstrip('=')
         s3_url = "s3://pernosco-upload/%s.tar.zst"%nonce
-        print("Uploading to %s..."%s3_url)
+        print("Uploading %d bytes to %s..."%(os.path.getsize(payload_file.name), s3_url))
         s3_env = dict(os.environ,
             AWS_DEFAULT_REGION='us-east-2',
             AWS_ACCESS_KEY_ID=aws_access_key_id,
