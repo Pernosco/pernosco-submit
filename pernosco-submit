@@ -32,7 +32,7 @@ def strip_wrapper(s):
 
 def check_executable(executable, package):
     if not shutil.which(executable):
-        print("Please install `%s`."%package, file=sys.stderr)
+        print("Cannot find `%s`. Please install package `%s`."%(executable, package), file=sys.stderr)
         sys.exit(1)
 
 def keygen():
@@ -59,6 +59,7 @@ if cmd != 'upload' or len(sys.argv) < 3:
 
 check_executable('openssl', 'openssl')
 check_executable('tar', 'tar')
+check_executable('zstdmt', 'zstd')
 if not shutil.which('aws'):
     print("Please install the AWS command-line tools using", file=sys.stderr)
     print("  sudo pip3 install awscli --upgrade", file=sys.stderr)
