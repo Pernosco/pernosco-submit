@@ -440,6 +440,10 @@ def upload():
             (sig, err) = p2.communicate()
         if err:
             raise CustomException("openssl failed: %s"%err)
+        if p0.returncode != 0:
+            raise CustomException("tar failed: %d"%p0.returncode)
+        if p1.returncode != 0:
+            raise CustomException("tee failed: %d"%p1.returncode)
         signature = base64.urlsafe_b64encode(sig).decode('utf-8')
         # Create a nonce that's 64 bits of the SHA256 of the signature.
         hasher = hashlib.sha256()
