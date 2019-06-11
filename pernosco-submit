@@ -440,6 +440,8 @@ def upload():
             (sig, err) = p2.communicate()
         if err:
             raise CustomException("openssl failed: %s"%err)
+        p0.wait()
+        p1.wait()
         if p0.returncode != 0:
             raise CustomException("tar failed: %d"%p0.returncode)
         if p1.returncode != 0:
