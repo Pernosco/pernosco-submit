@@ -6,8 +6,16 @@ Submits rr traces to Pernosco for debugging.
 
 The following environment variables must be set:
 * `PERNOSCO_USER`: User ID in email address form.
-* `PERNOSCO_USER_SECRET_KEY`: Secret key for that user ID. DO NOT SHARE THIS.
+* `PERNOSCO_USER_SECRET_KEY`: Secret key. Be careful about sharing this.
 * `PERNOSCO_GROUP`: Group to upload to, e.g. `public`. Influences who can access the trace and who gets billed.
+
+The `openssl`, `tar`, `zstdmt` and `aws` tools must be installed. The best way to install `aws` is
+```
+sudo pip3 install awscli --upgrade
+```
+Ubuntu and Debian packages [can have issues](https://github.com/aws/aws-cli/issues/2403).
+
+You must use rr master, at least commit [851910e88ac50ae0da1537cc32ee61b97387a6f3](https://github.com/mozilla/rr/commit/851910e88ac50ae0da1537cc32ee61b97387a6f3).
 
 ## Usage
 
