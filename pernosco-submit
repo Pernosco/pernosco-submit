@@ -255,7 +255,7 @@ def hg_find_rev(repo_path, remotes):
     best_sha = None
     best_remote = None
     for r in remotes:
-        output = subprocess.check_output(['hg', 'log', '-T', '{rev} {node}', '-r', "ancestor(parents(outgoing('%s') & ancestors(.)))"%r],
+        output = subprocess.check_output(['hg', 'log', '-T', '{rev} {node}', '-r', "ancestor((parents(outgoing('%s') & ancestors(.))) | .)"%r],
                                          cwd=repo_path).decode('utf-8')
         [rev_num, sha] = output.split()[:2]
         rev_num = int(rev_num)
