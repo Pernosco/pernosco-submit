@@ -68,7 +68,7 @@ if not shutil.which('aws'):
 if not shutil.which('rr'):
     print("Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
     sys.exit(1)
-status = subprocess.run(['rr', 'sources', '/dev/null'], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+status = subprocess.run(['rr', 'traceinfo', '/dev/null'], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 if status.returncode != 65:
     print("rr is out of date. Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
     sys.exit(1)
@@ -95,9 +95,31 @@ if not 'PERNOSCO_USER_SECRET_KEY' in os.environ:
     sys.exit(1)
 pernosco_user_secret_key = os.environ['PERNOSCO_USER_SECRET_KEY']
 
-os.makedirs("%s/files.user"%trace_dir, exist_ok=True)
+AVX512_CPUID_EXTENDED_FEATURES_EBX = 0xdc230000
+AVX512_CPUID_EXTENDED_FEATURES_ECX = 0x00002c42
+AVX512_CPUID_EXTENDED_FEATURES_EDX = 0x0000000c
+
+def has_avx512(cpuid_records):
+    for r in cpuid_records:
+        if r[0] == 7 and r[1] == 0:
+            if ((r[3] & AVX512_CPUID_EXTENDED_FEATURES_EBX) != 0 or
+                (r[4] & AVX512_CPUID_EXTENDED_FEATURES_ECX) != 0 or
+                (r[5] & AVX512_CPUID_EXTENDED_FEATURES_EDX) != 0):
+               return True
+    return False
+
+def check_trace():
+    output = subprocess.check_output(['rr', 'traceinfo', trace_dir]).decode('utf-8')
+    trace_info = json.loads(output)
+    if has_avx512(trace_info['cpuidRecords']):
+        print("AVX512 enabled when recording trace, but Pernosco does not support AVX512 yet.", file=sys.stderr)
+        print("Re-record with `rr record --disable-cpuid-features-ext 0x%x,0x%x,0x%x`."%(
+            AVX512_CPUID_EXTENDED_FEATURES_EBX, AVX512_CPUID_EXTENDED_FEATURES_ECX,
+            AVX512_CPUID_EXTENDED_FEATURES_EDX), file=sys.stderr)
+        sys.exit(2)
 
 def write_metadata():
+    os.makedirs("%s/files.user"%trace_dir, exist_ok=True)
     with open('%s/files.user/user'%trace_dir, "wt", encoding='utf-8') as f:
         print(pernosco_user, file=f)
     with open('%s/files.user/group'%trace_dir, "wt", encoding='utf-8') as f:
@@ -465,6 +487,7 @@ def upload():
             metadata += ",%s"%os.environ['PERNOSCO_EXTRA_METADATA']
         subprocess.check_call(["aws", "s3", "cp", "--metadata", metadata, payload_file.name, s3_url], env=s3_env)
 
+check_trace()
 write_metadata()
 rr_pack()
 package_libthread_db()
