@@ -111,7 +111,7 @@ def has_avx512(cpuid_records):
 def check_trace():
     output = subprocess.check_output(['rr', 'traceinfo', trace_dir]).decode('utf-8')
     trace_info = json.loads(output)
-    if has_avx512(trace_info['cpuidRecords']):
+    if has_avx512(trace_info['cpuidRecords']) and not "PERNOSCO_TEST" in os.environ:
         print("AVX512 enabled when recording trace, but Pernosco does not support AVX512 yet.", file=sys.stderr)
         print("Re-record with `rr record --disable-cpuid-features-ext 0x%x,0x%x,0x%x`."%(
             AVX512_CPUID_EXTENDED_FEATURES_EBX, AVX512_CPUID_EXTENDED_FEATURES_ECX,
