@@ -108,15 +108,30 @@ def has_avx512(cpuid_records):
                return True
     return False
 
+SENSITIVE_ENV_VARS = {
+    'PERNOSCO_USER_SECRET_KEY': True,
+    'AWS_SECRET_ACCESS_KEY': True,
+    'SSHPASS': True,
+}
+
 def check_trace():
     output = subprocess.check_output(['rr', 'traceinfo', trace_dir]).decode('utf-8')
     trace_info = json.loads(output)
+    if not 'environ' in trace_info:
+        print("rr is out of date. Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
+        sys.exit(1)
     if has_avx512(trace_info['cpuidRecords']) and not "PERNOSCO_TEST" in os.environ:
         print("AVX512 enabled when recording trace, but Pernosco does not support AVX512 yet.", file=sys.stderr)
         print("Re-record with `rr record --disable-cpuid-features-ext 0x%x,0x%x,0x%x`."%(
             AVX512_CPUID_EXTENDED_FEATURES_EBX, AVX512_CPUID_EXTENDED_FEATURES_ECX,
             AVX512_CPUID_EXTENDED_FEATURES_EDX), file=sys.stderr)
         sys.exit(2)
+    for env in trace_info['environ']:
+        name = env.split('=', 1)[0]
+        if name in SENSITIVE_ENV_VARS:
+            print("Sensitive environment variable %s found in initial recorded process."%name, file=sys.stderr)
+            print("Re-record with environment variable unset.", file=sys.stderr)
+            sys.exit(2)
 
 def write_metadata():
     os.makedirs("%s/files.user"%trace_dir, exist_ok=True)
