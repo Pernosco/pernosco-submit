@@ -153,6 +153,19 @@ def package_libthread_db():
             shutil.copyfile(f, '%s/files.system-debuginfo/libthread_db.so'%trace_dir)
             break
 
+# Known Mercurial hosts
+mozilla_re = re.compile('(https|ssh)://hg.mozilla.org/(.*)')
+
+def hg_remote_url_to_source_url_generator(remote_url):
+    m = mozilla_re.match(remote_url)
+    if m:
+        if m.group(2) == 'try':
+            # Ignore 'try' because it gets purged frequently
+            return None
+        return lambda rev: ("https://hg.mozilla.org/%s/raw-file/%s/"%(m.group(2), rev), None)
+    return None
+
+# Known Git hosts
 github_re = re.compile('(https://github.com/|git@github.com:)([^/]+)/(.*)')
 gitlab_re = re.compile('(https://gitlab.com/|git@gitlab.com:)([^/]+)/(.*)')
 googlesource_re = re.compile('https://([^.]+.googlesource.com)/(.*)')
@@ -173,6 +186,11 @@ def git_remote_url_to_source_url_generator(remote_url):
     if m:
         # googlesource uses gitiles
         return lambda rev: ("https://%s/%s/+/%s/"%(m.group(1), m.group(2), rev), "?format=TEXT")
+    if remote_url.startswith('hg::'):
+        # Cinnabar Mercurial host
+        hg = hg_remote_url_to_source_url_generator(remote_url[4:])
+        if hg:
+            return hg
     return None
 
 # Returns a hash of remote names to generators of URLs Pernosco can use to fetch files
@@ -264,17 +282,6 @@ def analyze_git_repo(repo_path, files):
     if url_suffix:
          mount['urlSuffix'] = url_suffix
     return (mount, out_files)
-
-mozilla_re = re.compile('(https|ssh)://hg.mozilla.org/(.*)')
-
-def hg_remote_url_to_source_url_generator(remote_url):
-    m = mozilla_re.match(remote_url)
-    if m:
-        if m.group(2) == 'try':
-            # Ignore 'try' because it gets purged frequently
-            return None
-        return lambda rev: ("https://hg.mozilla.org/%s/raw-file/%s/"%(m.group(2), rev), None)
-    return None
 
 # Returns a hash of remote names to generators of URLs Pernosco can use to fetch files
 def hg_remotes(repo_path):
