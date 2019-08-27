@@ -175,7 +175,10 @@ def strip(s, m):
         return s[:(len(s) - len(m))]
     return s
 
-def git_remote_url_to_source_url_generator(remote_url):
+def cinnabar_hg_rev(git_rev, repo_path):
+    return subprocess.check_output(['git', 'cinnabar', 'git2hg', git_rev], cwd=repo_path).decode('utf-8')
+
+def git_remote_url_to_source_url_generator(remote_url, repo_path):
     m = github_re.match(remote_url)
     if m:
         return lambda rev: ("https://raw.githubusercontent.com/%s/%s/%s/"%(m.group(2), strip(m.group(3), ".git"), rev), None)
@@ -190,7 +193,7 @@ def git_remote_url_to_source_url_generator(remote_url):
         # Cinnabar Mercurial host
         hg = hg_remote_url_to_source_url_generator(remote_url[4:])
         if hg:
-            return hg
+            return lambda rev: hg(cinnabar_hg_rev(rev, repo_path))
     return None
 
 # Returns a hash of remote names to generators of URLs Pernosco can use to fetch files
@@ -201,7 +204,7 @@ def git_remotes(repo_path):
         [remote, url, token] = line.split()[:3]
         if token != "(fetch)":
             continue
-        url_generator = git_remote_url_to_source_url_generator(url)
+        url_generator = git_remote_url_to_source_url_generator(url, repo_path)
         if url_generator != None:
             ret[remote] = url_generator
     return ret
