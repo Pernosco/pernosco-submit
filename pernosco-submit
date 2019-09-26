@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import base64
+import glob
 import hashlib
 import json
 import os
@@ -133,12 +134,23 @@ def check_trace():
             print("Re-record with environment variable unset.", file=sys.stderr)
             sys.exit(2)
 
+def maybe_write_mozilla_metadata():
+    for firefox_bin in glob.glob("%s/mmap_*_firefox-bin"%trace_dir):
+        original_file_names = subprocess.check_output(['rr', 'filename', firefox_bin])
+        for name in original_file_names.splitlines():
+            application_ini = b"%s/application.ini"%os.path.dirname(name)
+            if os.path.isfile(application_ini):
+                os.makedirs("%s/files.mozilla"%trace_dir, exist_ok=True)
+                shutil.copyfile(application_ini, '%s/files.mozilla/application.ini'%trace_dir)
+                return
+
 def write_metadata():
     os.makedirs("%s/files.user"%trace_dir, exist_ok=True)
     with open('%s/files.user/user'%trace_dir, "wt", encoding='utf-8') as f:
         print(pernosco_user, file=f)
     with open('%s/files.user/group'%trace_dir, "wt", encoding='utf-8') as f:
         print(pernosco_group, file=f)
+    maybe_write_mozilla_metadata()
 
 def rr_pack():
     print("Running 'rr pack'...")
