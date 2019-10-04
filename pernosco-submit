@@ -12,13 +12,14 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.request
 import zipfile
 
 class CustomException(Exception):
     pass
 
 def usage():
-    print("usage: %s upload <trace-dir> [<source-path>...]"%sys.argv[0], file=sys.stderr)
+    print("usage: %s upload [--consent-to-current-privacy-policy] <trace-dir> [<source-path>...]"%sys.argv[0], file=sys.stderr)
     print("       %s keygen <provided-secret>"%sys.argv[0], file=sys.stderr)
     print("Only source files under the given path(s) will be uploaded.", file=sys.stderr)
     sys.exit(1)
@@ -48,13 +49,13 @@ def keygen():
     public_key = subprocess.check_output(['openssl', 'ec', '-pubout'], input=full_key, stderr=subprocess.DEVNULL).decode('utf-8')
     print("Private key: PERNOSCO_USER_SECRET_KEY=%s,%s"%(provided, strip_wrapper(full_key.decode('utf-8'))))
     print("Public key: %s"%strip_wrapper(public_key))
-    sys.exit(0)
 
 if len(sys.argv) < 2:
     usage()
 cmd = sys.argv[1]
 if cmd == 'keygen':
     keygen()
+    sys.exit(0)
 if cmd != 'upload' or len(sys.argv) < 3:
     usage()
 
@@ -74,6 +75,10 @@ if status.returncode != 65:
     print("rr is out of date. Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
     sys.exit(1)
 
+consent_to_current_privacy_policy = False
+if sys.argv[2] == "--consent-to-current-privacy-policy":
+    del sys.argv[2]
+    consent_to_current_privacy_policy = True
 trace_dir = sys.argv[2]
 source_dirs = []
 for path in sys.argv[3:]:
@@ -95,6 +100,53 @@ if not 'PERNOSCO_USER_SECRET_KEY' in os.environ:
     print("PERNOSCO_USER_SECRET_KEY not set", file=sys.stderr)
     sys.exit(1)
 pernosco_user_secret_key = os.environ['PERNOSCO_USER_SECRET_KEY']
+
+# Fetch current privacy policy version (or None if we fail to get it)
+def fetch_privacy_policy_version():
+    version_re = re.compile(b'<meta name="policy-version" content="(\d+)">')
+    try:
+        content = urllib.request.urlopen('https://pernos.co/privacy')
+        for line in content.readlines():
+            m = version_re.search(line)
+            if m:
+                return int(m.group(1))
+    except:
+        pass
+    print("Unable to determine privacy policy version!", file=sys.stderr)
+    return None
+
+def check_privacy_policy_consent():
+    if consent_to_current_privacy_policy:
+        return
+    policy_version = fetch_privacy_policy_version()
+    consent_file_dir = "%s/.local/share/pernosco"%os.environ['HOME']
+    consent_file = "%s/consented-to-privacy-policy-version"%consent_file_dir
+    try:
+        with open(consent_file) as f:
+            consented_to_version = int(f.read())
+            if consented_to_version == policy_version:
+                return
+            if policy_version != None:
+                print("Privacy policy has changed.", file=sys.stderr)
+    except:
+        pass
+    if not sys.stdin.isatty():
+        print("Need to consent to privacy policy, but stdin is not a terminal", file=sys.stderr)
+        sys.exit(1)
+    if not sys.stdout.isatty():
+        print("Need to consent to privacy policy, but stdout is not a terminal", file=sys.stderr)
+        sys.exit(1)
+    while True:
+        s = input("You must consent to the current privacy policy at https://pernos.co/privacy. Do you? (yes/no) ")
+        if s == 'no':
+            sys.exit(1)
+        if s == 'yes':
+            break
+        print("Please enter 'yes' or 'no'.")
+    if policy_version != None:
+        os.makedirs(consent_file_dir, exist_ok=True)
+        with open(consent_file, "w") as f:
+            print(policy_version, file=f)
 
 AVX512_CPUID_EXTENDED_FEATURES_EBX = 0xdc230000
 AVX512_CPUID_EXTENDED_FEATURES_ECX = 0x00002c42
@@ -526,6 +578,7 @@ def upload():
             metadata += ",%s"%os.environ['PERNOSCO_EXTRA_METADATA']
         subprocess.check_call(["aws", "s3", "cp", "--metadata", metadata, payload_file.name, s3_url], env=s3_env)
 
+check_privacy_policy_consent()
 check_trace()
 write_metadata()
 rr_pack()
