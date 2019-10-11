@@ -240,7 +240,7 @@ def strip(s, m):
     return s
 
 def cinnabar_hg_rev(git_rev, repo_path):
-    return subprocess.check_output(['git', 'cinnabar', 'git2hg', git_rev], cwd=repo_path).decode('utf-8')
+    return subprocess.check_output(['git', 'cinnabar', 'git2hg', git_rev], cwd=repo_path).decode('utf-8').split()[0]
 
 def git_remote_url_to_source_url_generator(remote_url, repo_path):
     m = github_re.match(remote_url)
