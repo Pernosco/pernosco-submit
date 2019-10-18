@@ -19,9 +19,16 @@ class CustomException(Exception):
     pass
 
 def usage():
-    print("usage: %s upload [--consent-to-current-privacy-policy] <trace-dir> [<source-path>...]"%sys.argv[0], file=sys.stderr)
-    print("       %s keygen <provided-secret>"%sys.argv[0], file=sys.stderr)
-    print("Only source files under the given path(s) will be uploaded.", file=sys.stderr)
+    print("Usage:", file=sys.stderr)
+    print("%s upload [--title <string>] [--url <url>] [--consent-to-current-privacy-policy] <trace-dir> [<source-path>...]"%sys.argv[0], file=sys.stderr)
+    print("  Upload a trace to Pernosco", file=sys.stderr)
+    print("    --title <string>: Display the given name in the Pernosco UI and tab title", file=sys.stderr)
+    print("    --url <url>: Make the name a link to the given URL", file=sys.stderr)
+    print("    --consent-to-current-privacy-policy: Unconditionally consent to the current privacy policy", file=sys.stderr)
+    print("  Only source files under the given path(s) will be uploaded.", file=sys.stderr)
+    print(file=sys.stderr)
+    print("%s keygen <provided-secret>"%sys.argv[0], file=sys.stderr)
+    print("  Generate a new public/private key pair for use with Pernosco. Only useful if someone has instructed you to use this.", file=sys.stderr)
     sys.exit(1)
 
 def strip_wrapper(s):
@@ -76,9 +83,28 @@ if status.returncode != 65:
     sys.exit(1)
 
 consent_to_current_privacy_policy = False
-if sys.argv[2] == "--consent-to-current-privacy-policy":
-    del sys.argv[2]
-    consent_to_current_privacy_policy = True
+metadata_title = None
+metadata_url = None
+while len(sys.argv) > 2:
+    if sys.argv[2] == "--consent-to-current-privacy-policy":
+        del sys.argv[2]
+        consent_to_current_privacy_policy = True
+    elif sys.argv[2] == "--title" and len(sys.argv) > 3:
+        metadata_title = sys.argv[3]
+        if len(metadata_title.encode('utf-8')) > 100:
+            print("Title must have max 100 UTF-8 bytes", file=sys.stderr)
+            exit(1)
+        del sys.argv[2:4]
+    elif sys.argv[2] == "--url" and len(sys.argv) > 3:
+        metadata_url = sys.argv[3]
+        if len(metadata_url.encode('utf-8')) > 1000:
+            print("Url must have max 1000 UTF-8 bytes", file=sys.stderr)
+            exit(1)
+        del sys.argv[2:4]
+    else:
+        break
+if len(sys.argv) < 3:
+    usage()
 trace_dir = sys.argv[2]
 source_dirs = []
 for path in sys.argv[3:]:
@@ -200,6 +226,13 @@ def write_metadata():
     os.makedirs("%s/files.user"%trace_dir, exist_ok=True)
     with open('%s/files.user/user'%trace_dir, "wt", encoding='utf-8') as f:
         print(pernosco_user, file=f)
+    metadata = {}
+    if metadata_title != None:
+        metadata['title'] = metadata_title
+    if metadata_url != None:
+        metadata['url'] = metadata_url
+    with open('%s/producer-metadata'%trace_dir, "wt", encoding='utf-8') as f:
+        print(json.dumps(metadata), file=f)
     with open('%s/files.user/group'%trace_dir, "wt", encoding='utf-8') as f:
         print(pernosco_group, file=f)
     maybe_write_mozilla_metadata()
