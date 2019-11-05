@@ -85,6 +85,7 @@ if status.returncode != 65:
 consent_to_current_privacy_policy = False
 metadata_title = None
 metadata_url = None
+ignore_warnings = False
 while len(sys.argv) > 2:
     if sys.argv[2] == "--consent-to-current-privacy-policy":
         del sys.argv[2]
@@ -101,6 +102,10 @@ while len(sys.argv) > 2:
             print("Url must have max 1000 UTF-8 bytes", file=sys.stderr)
             exit(1)
         del sys.argv[2:4]
+    elif sys.argv[2] == "--ignore-warnings":
+        del sys.argv[2]
+        ignore_warnings = True
+        print("Ignoring the automated trace check (not recommended!)", file=sys.stderr)
     else:
         break
 if len(sys.argv) < 3:
@@ -193,7 +198,7 @@ SENSITIVE_ENV_VARS = {
     'SSHPASS': True,
 }
 
-def check_trace():
+def check_trace(fatal=True):
     output = subprocess.check_output(['rr', 'traceinfo', trace_dir]).decode('utf-8')
     trace_info = json.loads(output)
     if not 'environ' in trace_info:
@@ -201,16 +206,22 @@ def check_trace():
         sys.exit(1)
     if has_avx512(trace_info['cpuidRecords']) and not "PERNOSCO_TEST" in os.environ:
         print("AVX512 enabled when recording trace, but Pernosco does not support AVX512 yet.", file=sys.stderr)
-        print("Re-record with `rr record --disable-cpuid-features-ext 0x%x,0x%x,0x%x`."%(
-            AVX512_CPUID_EXTENDED_FEATURES_EBX, AVX512_CPUID_EXTENDED_FEATURES_ECX,
-            AVX512_CPUID_EXTENDED_FEATURES_EDX), file=sys.stderr)
-        sys.exit(2)
+        if fatal:
+            print("Re-record with `rr record --disable-cpuid-features-ext 0x%x,0x%x,0x%x`."%(
+                AVX512_CPUID_EXTENDED_FEATURES_EBX, AVX512_CPUID_EXTENDED_FEATURES_ECX,
+                AVX512_CPUID_EXTENDED_FEATURES_EDX), file=sys.stderr)
+            sys.exit(2)
+        else:
+            print("Ignoring AVX512 enabled. This trace may fail to process!", file=sys.stderr)
     for env in trace_info['environ']:
         name = env.split('=', 1)[0]
         if name in SENSITIVE_ENV_VARS:
             print("Sensitive environment variable %s found in initial recorded process."%name, file=sys.stderr)
-            print("Re-record with environment variable unset.", file=sys.stderr)
-            sys.exit(2)
+            if fatal:
+                print("Re-record with environment variable unset.", file=sys.stderr)
+                sys.exit(2)
+            else:
+                print("Ignoring presence of sensitive environment variables. Values will be disclosed!", file=sys.stderr)
 
 def maybe_write_mozilla_metadata():
     for firefox_bin in glob.glob("%s/mmap_*_firefox-bin"%trace_dir):
@@ -612,7 +623,7 @@ def upload():
         subprocess.check_call(["aws", "s3", "cp", "--metadata", metadata, payload_file.name, s3_url], env=s3_env)
 
 check_privacy_policy_consent()
-check_trace()
+check_trace(not ignore_warnings)
 write_metadata()
 rr_pack()
 package_libthread_db()
