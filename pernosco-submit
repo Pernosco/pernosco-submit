@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import base64
+import errno
 import glob
 import hashlib
 import json
@@ -480,10 +481,37 @@ def allowed_file(file):
         print("(too many disallowed-source-file warnings, suppressing the rest)")
     return False
 
+def mkdir_p(path):
+    try:
+        os.makedirs(path)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
+
 def package_source_files():
     print("Obtaining source file list...")
     output = subprocess.check_output(['rr', 'sources', trace_dir]).decode('utf-8')
     rr_sources = json.loads(output)
+
+    # Copy external debuginfo into place
+    if 'external_debug_info' in rr_sources:
+        for e in rr_sources['external_debug_info']:
+            build_id = e['build_id']
+            dir = "%s/debug/.build-id/%s"%(trace_dir, build_id[:2])
+            mkdir_p(dir)
+            t = e['type']
+            if t == 'debuglink':
+                ext = "debug"
+            elif t == 'debugaltlink':
+                ext = "sup"
+            else:
+                print("Unknown type '%s' from 'rr sources': is this script out of date? Aborting.", file=sys.stderr)
+                sys.exit(1)
+            dst = "%s/%s.%s"%(dir, build_id[2:], ext)
+            shutil.copy(e['path'], dst)
+
     out_sources = {};
     or_condition = [];
     for b in rr_sources['relevant_binaries']:
