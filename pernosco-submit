@@ -467,18 +467,10 @@ def analyze_repo(repo_path, files):
         return analyze_hg_repo(repo_path, files)
     return (None, files)
 
-disallowed_file_count = 0;
-
 def allowed_file(file):
-    global disallowed_file_count
     for f in source_dirs:
         if file.startswith(f):
             return True
-    disallowed_file_count += 1
-    if disallowed_file_count <= 10:
-        print("Not uploading source file %s (add an allowed source directory to the command line?)"%file)
-    if disallowed_file_count == 11:
-        print("(too many disallowed-source-file warnings, suppressing the rest)")
     return False
 
 def mkdir_p(path):
@@ -540,16 +532,24 @@ def package_source_files():
         out_mounts.append(repo_mount)
     # Install non-repo files
     print("Packaging %d modified and %d non-repository files..."%(len(explicit_files) - non_repo_files_count, non_repo_files_count))
+
     with zipfile.ZipFile('%s/files.user/sources.zip'%trace_dir, mode='w', compression=zipfile.ZIP_DEFLATED) as zip_file:
         for f in explicit_files:
             if allowed_file(f):
                 zip_file.write(f)
+    disallowed_file_count = 0
     with zipfile.ZipFile('%s/files.user/sources-placeholders.zip'%trace_dir, mode='w', compression=zipfile.ZIP_DEFLATED) as zip_file:
         for f in explicit_files:
             if not allowed_file(f):
                 content = ("/* This file was not uploaded because the path %s is not under the allowed directories [%s] */"%
                     (f, ", ".join(['"%s"'%d for d in source_dirs])))
                 zip_file.writestr(f, content)
+                if not ("/.cargo/registry/src/" in f):
+                    disallowed_file_count += 1
+                    if disallowed_file_count <= 10:
+                        print("Not uploading source file %s (add an allowed source directory to the command line?)"%f)
+                    if disallowed_file_count == 11:
+                        print("(too many disallowed-source-file warnings, suppressing the rest)")
     out_mounts.append({'archive': 'files.user/sources.zip', 'at': '/'})
     out_placeholder_mounts.append({'archive': 'files.user/sources-placeholders.zip', 'at': '/'})
     # Add symlinks
