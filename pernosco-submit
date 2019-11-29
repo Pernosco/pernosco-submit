@@ -513,12 +513,15 @@ def package_source_files():
             shutil.copy(e['path'], dst)
 
     out_sources = {};
+    out_placeholders = {};
     or_condition = [];
     for b in rr_sources['relevant_binaries']:
         or_condition.append({'binary':b})
     out_sources['condition'] = {'or': or_condition}
+    out_placeholders['condition'] = {'or': or_condition}
     explicit_files = []
     out_mounts = []
+    out_placeholder_mounts = []
     repo_paths = []
     non_repo_files_count = 0;
     # Mount repos
@@ -541,11 +544,14 @@ def package_source_files():
         for f in explicit_files:
             if allowed_file(f):
                 zip_file.write(f)
-            else:
+    with zipfile.ZipFile('%s/files.user/sources-placeholders.zip'%trace_dir, mode='w', compression=zipfile.ZIP_DEFLATED) as zip_file:
+        for f in explicit_files:
+            if not allowed_file(f):
                 content = ("/* This file was not uploaded because the path %s is not under the allowed directories [%s] */"%
                     (f, ", ".join(['"%s"'%d for d in source_dirs])))
                 zip_file.writestr(f, content)
     out_mounts.append({'archive': 'files.user/sources.zip', 'at': '/'})
+    out_placeholder_mounts.append({'archive': 'files.user/sources-placeholders.zip', 'at': '/'})
     # Add symlinks
     for s in rr_sources['symlinks']:
         # A symlink at 'from' points to the file at 'to'. So, we want to create
@@ -554,8 +560,11 @@ def package_source_files():
     # Dump output
     out_sources['files'] = out_mounts
     out_sources['relevance'] = 'Relevant'
+    out_placeholders['files'] = out_placeholder_mounts
+    out_placeholders['relevance'] = 'NotRelevant'
+    out_placeholders['priority'] = -1000
     with open('%s/sources.user'%trace_dir, "wt") as f:
-        json.dump([out_sources], f, indent=2)
+        json.dump([out_sources, out_placeholders], f, indent=2)
     return repo_paths
 
 # The files under these paths are copied into gdbinit/
