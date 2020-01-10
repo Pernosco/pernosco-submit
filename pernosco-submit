@@ -114,6 +114,9 @@ if len(sys.argv) < 3:
 trace_dir = sys.argv[2]
 source_dirs = []
 for path in sys.argv[3:]:
+    if path.startswith('-'):
+        print("Unexpected option '%s' in path list; put all options before the trace directory or prepend './'"%path, file=sys.stderr)
+        sys.exit(1)
     # Apply realpath since our processing below depends on that
     source_dirs.append(os.path.realpath(path))
 if not os.path.isfile("%s/version"%trace_dir):
