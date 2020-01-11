@@ -651,16 +651,28 @@ def upload():
         nonce = base64.urlsafe_b64encode(hasher.digest()[:8]).decode('utf-8').rstrip('=')
         s3_url = "s3://pernosco-upload/%s.tar.zst"%nonce
         print("Uploading %d bytes to %s..."%(os.path.getsize(payload_file.name), s3_url))
-        s3_env = dict(os.environ,
+        aws_env = dict(os.environ,
             AWS_DEFAULT_REGION='us-east-2',
             AWS_ACCESS_KEY_ID=aws_access_key_id,
             AWS_SECRET_ACCESS_KEY=aws_secret_access_key)
+        # Check our credentials before proceeding further.
+        checker_args = ["aws", "lambda", "invoke", "--function-name", "upload-credential-check", "--qualifier"]
+        if 'PERNOSCO_CREDENTIAL_CHECKER' in os.environ:
+            checker_args.extend([os.environ['PERNOSCO_CREDENTIAL_CHECKER']])
+        else:
+            checker_args.extend(["PROD"])
+        checker_args.extend(["--payload", "\"publickey=%s,user=%s,group=%s\""%(strip_wrapper(public_key), pernosco_user, pernosco_group), "/dev/null"])
+        p3 = subprocess.Popen(checker_args, env=aws_env, stdout=subprocess.PIPE)
+        check_result = p3.communicate()[0].decode("utf-8")
+        if check_result.find("Unhandled") != -1:
+            raise CustomException("Your upload credentials are not valid. Check them and try again.")
+
         # Send the public key with the signature so the server can easily
         # determine which key was used and check that the key is authorized
         metadata = "publickey=%s,signature=%s,user=%s,group=%s"%(strip_wrapper(public_key), signature, pernosco_user, pernosco_group)
         if 'PERNOSCO_EXTRA_METADATA' in os.environ:
             metadata += ",%s"%os.environ['PERNOSCO_EXTRA_METADATA']
-        subprocess.check_call(["aws", "s3", "cp", "--metadata", metadata, payload_file.name, s3_url], env=s3_env)
+        subprocess.check_call(["aws", "s3", "cp", "--metadata", metadata, payload_file.name, s3_url], env=aws_env)
 
 check_privacy_policy_consent()
 check_trace(not ignore_warnings)
