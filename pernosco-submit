@@ -285,7 +285,7 @@ def package_libthread_db():
             break
 
 # Known Mercurial hosts
-mozilla_re = re.compile('(https|ssh)://hg.mozilla.org/(.*)')
+mozilla_re = re.compile('https://hg.mozilla.org/(.*)')
 
 def hg_remote_url_to_source_url_generator(remote_url):
     m = mozilla_re.match(remote_url)
