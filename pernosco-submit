@@ -45,6 +45,22 @@ def check_executable(executable, package):
         print("Cannot find `%s`. Please install package `%s`."%(executable, package), file=sys.stderr)
         sys.exit(1)
 
+echo_commands = False
+def check_output(process_args, *args, **kwargs):
+    if echo_commands:
+        print("Running %s"%(" ".join(process_args)))
+    return subprocess.check_output(process_args, *args, **kwargs)
+
+def check_call(process_args, *args, **kwargs):
+    if echo_commands:
+        print("Running %s"%(" ".join(process_args)))
+    return subprocess.check_call(process_args, *args, **kwargs)
+
+def Popen(process_args, *args, **kwargs):
+    if echo_commands:
+        print("Running %s"%(" ".join(process_args)))
+    return subprocess.Popen(process_args, *args, **kwargs)
+
 def keygen():
     if len(sys.argv) != 3:
         usage()
@@ -53,8 +69,8 @@ def keygen():
     provided = sys.argv[2]
     if len(provided.split(',')) != 2:
         print("Invalid <provided-secret> argument", file=sys.stderr)
-    full_key = subprocess.check_output(['openssl', 'ecparam', '-genkey', '-name', 'prime256v1', '-noout'])
-    public_key = subprocess.check_output(['openssl', 'ec', '-pubout'], input=full_key, stderr=subprocess.DEVNULL).decode('utf-8')
+    full_key = check_output(['openssl', 'ecparam', '-genkey', '-name', 'prime256v1', '-noout'])
+    public_key = check_output(['openssl', 'ec', '-pubout'], input=full_key, stderr=subprocess.DEVNULL).decode('utf-8')
     print("Private key: PERNOSCO_USER_SECRET_KEY=%s,%s"%(provided, strip_wrapper(full_key.decode('utf-8'))))
     print("Public key: %s"%strip_wrapper(public_key))
 
@@ -107,6 +123,9 @@ while len(sys.argv) > 2:
         del sys.argv[2]
         ignore_warnings = True
         print("Ignoring the automated trace check (not recommended!)", file=sys.stderr)
+    elif sys.argv[2] == "-x":
+        del sys.argv[2]
+        echo_commands = True
     else:
         break
 if len(sys.argv) < 3:
@@ -203,7 +222,7 @@ SENSITIVE_ENV_VARS = {
 }
 
 def check_trace(fatal=True):
-    output = subprocess.check_output(['rr', 'traceinfo', trace_dir]).decode('utf-8')
+    output = check_output(['rr', 'traceinfo', trace_dir]).decode('utf-8')
     trace_info = json.loads(output)
     if not 'environ' in trace_info:
         print("rr is out of date. Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
@@ -229,7 +248,7 @@ def check_trace(fatal=True):
 
 def maybe_write_mozilla_metadata():
     for firefox_bin in glob.glob("%s/mmap_*_firefox-bin"%trace_dir):
-        original_file_names = subprocess.check_output(['rr', 'filename', firefox_bin])
+        original_file_names = check_output(['rr', 'filename', firefox_bin])
         for name in original_file_names.splitlines():
             application_ini = b"%s/application.ini"%os.path.dirname(name)
             if os.path.isfile(application_ini):
@@ -254,7 +273,7 @@ def write_metadata():
 
 def rr_pack():
     print("Running 'rr pack'...")
-    subprocess.check_call(['rr', 'pack', trace_dir])
+    check_call(['rr', 'pack', trace_dir])
 
 def package_libthread_db():
     for f in ['/usr/lib64/libthread_db.so',
@@ -288,7 +307,7 @@ def strip(s, m):
     return s
 
 def cinnabar_hg_rev(git_rev, repo_path):
-    return subprocess.check_output(['git', 'cinnabar', 'git2hg', git_rev], cwd=repo_path).decode('utf-8').split()[0]
+    return check_output(['git', 'cinnabar', 'git2hg', git_rev], cwd=repo_path).decode('utf-8').split()[0]
 
 def git_remote_url_to_source_url_generator(remote_url, repo_path):
     m = github_re.match(remote_url)
@@ -310,7 +329,7 @@ def git_remote_url_to_source_url_generator(remote_url, repo_path):
 
 # Returns a hash of remote names to generators of URLs Pernosco can use to fetch files
 def git_remotes(repo_path):
-    output = subprocess.check_output(['git', 'remote', '--verbose'], cwd=repo_path).decode('utf-8')
+    output = check_output(['git', 'remote', '--verbose'], cwd=repo_path).decode('utf-8')
     ret = {}
     for line in output.splitlines():
         [remote, url, token] = line.split()[:3]
@@ -322,8 +341,8 @@ def git_remotes(repo_path):
     return ret
 
 def git_find_rev(repo_path, remotes):
-    git = subprocess.Popen(['git', 'log', '--format=%H %D'],
-                           cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    git = Popen(['git', 'log', '--format=%H %D'],
+                cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     for line in git.stdout:
         line = line.decode('utf-8')
         revision = line.split()[0]
@@ -341,8 +360,8 @@ def git_committed_files(repo_path, revision, files):
     h = {}
     for f in files:
         h[f] = True
-    git = subprocess.Popen(['git', 'diff', '--name-only', revision, 'HEAD'],
-                           cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    git = Popen(['git', 'diff', '--name-only', revision, 'HEAD'],
+                cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     ret = {}
     for line in git.stdout:
         file = line.decode('utf-8').rstrip()
@@ -358,8 +377,8 @@ def git_changed_files(repo_path, files):
     h = {}
     for f in files:
         h[f] = True
-    git = subprocess.Popen(['git', 'status', '--untracked-files=all', '--ignored', '--short'],
-                           cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    git = Popen(['git', 'status', '--untracked-files=all', '--ignored', '--short'],
+                cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     ret = {}
     for line in git.stdout:
         line = line.decode('utf-8')
@@ -400,7 +419,7 @@ def analyze_git_repo(repo_path, files):
 
 # Returns a hash of remote names to generators of URLs Pernosco can use to fetch files
 def hg_remotes(repo_path):
-    output = subprocess.check_output(['hg', 'paths'], cwd=repo_path).decode('utf-8')
+    output = check_output(['hg', 'paths'], cwd=repo_path).decode('utf-8')
     ret = {}
     for line in output.splitlines():
         [remote, equals, url] = line.split()[:3]
@@ -414,8 +433,8 @@ def hg_find_rev(repo_path, remotes):
     best_sha = None
     best_remote = None
     for r in remotes:
-        output = subprocess.check_output(['hg', 'log', '-T', '{rev} {node}', '-r', "ancestor((parents(outgoing('%s') & ancestors(.))) | .)"%r],
-                                         cwd=repo_path).decode('utf-8')
+        output = check_output(['hg', 'log', '-T', '{rev} {node}', '-r', "ancestor((parents(outgoing('%s') & ancestors(.))) | .)"%r],
+                              cwd=repo_path).decode('utf-8')
         [rev_num, sha] = output.split()[:2]
         rev_num = int(rev_num)
         if rev_num > best_rev_num:
@@ -430,8 +449,8 @@ def hg_changed_files(repo_path, revision, files):
     h = {}
     for f in files:
         h[f] = True
-    hg = subprocess.Popen(['hg', 'status', '-nmaui', '--rev', revision],
-                           cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    hg = Popen(['hg', 'status', '-nmaui', '--rev', revision],
+               cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     ret = {}
     for line in hg.stdout:
         file = line.decode('utf-8').rstrip()
@@ -487,7 +506,7 @@ def mkdir_p(path):
 
 def package_source_files():
     print("Obtaining source file list...")
-    output = subprocess.check_output(['rr', 'sources', trace_dir]).decode('utf-8')
+    output = check_output(['rr', 'sources', trace_dir]).decode('utf-8')
     rr_sources = json.loads(output)
 
     # Copy external debuginfo into place
@@ -627,12 +646,12 @@ def upload():
         with tempfile.TemporaryFile(mode="w+t", encoding='utf-8') as key_file:
             print("-----BEGIN EC PRIVATE KEY-----\n%s\n-----END EC PRIVATE KEY-----"%pernosco_secret_key, file=key_file)
             key_file.seek(0)
-            public_key = subprocess.check_output(['openssl', 'ec', '-pubout'], stdin=key_file, stderr=subprocess.DEVNULL).decode('utf-8')
-            p0 = subprocess.Popen(["tar", "-I", "zstdmt", "--exclude", "db*", "-cf", "-", "."], cwd=trace_dir, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-            p1 = subprocess.Popen(["tee", payload_file.name], stdin=p0.stdout, stdout=subprocess.PIPE)
+            public_key = check_output(['openssl', 'ec', '-pubout'], stdin=key_file, stderr=subprocess.DEVNULL).decode('utf-8')
+            p0 = Popen(["tar", "-I", "zstdmt", "--exclude", "db*", "-cf", "-", "."], cwd=trace_dir, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            p1 = Popen(["tee", payload_file.name], stdin=p0.stdout, stdout=subprocess.PIPE)
             p0.stdout.close()
             os.set_inheritable(key_file.fileno(), True)
-            p2 = subprocess.Popen(["openssl", "dgst", "-sha256", "-sign", "/proc/self/fd/%d"%key_file.fileno()], close_fds=False, stdin=p1.stdout, stdout=subprocess.PIPE)
+            p2 = Popen(["openssl", "dgst", "-sha256", "-sign", "/proc/self/fd/%d"%key_file.fileno()], close_fds=False, stdin=p1.stdout, stdout=subprocess.PIPE)
             p1.stdout.close()
             (sig, err) = p2.communicate()
         if err:
@@ -662,7 +681,7 @@ def upload():
         else:
             checker_args.extend(["PROD"])
         checker_args.extend(["--payload", "\"publickey=%s,user=%s,group=%s\""%(strip_wrapper(public_key), pernosco_user, pernosco_group), "/dev/null"])
-        p3 = subprocess.Popen(checker_args, env=aws_env, stdout=subprocess.PIPE)
+        p3 = Popen(checker_args, env=aws_env, stdout=subprocess.PIPE)
         check_result = p3.communicate()[0].decode("utf-8")
         if check_result.find("Unhandled") != -1:
             raise CustomException("Your upload credentials are not valid. Check them and try again.")
@@ -672,7 +691,7 @@ def upload():
         metadata = "publickey=%s,signature=%s,user=%s,group=%s"%(strip_wrapper(public_key), signature, pernosco_user, pernosco_group)
         if 'PERNOSCO_EXTRA_METADATA' in os.environ:
             metadata += ",%s"%os.environ['PERNOSCO_EXTRA_METADATA']
-        subprocess.check_call(["aws", "s3", "cp", "--metadata", metadata, payload_file.name, s3_url], env=aws_env)
+        check_call(["aws", "s3", "cp", "--metadata", metadata, payload_file.name, s3_url], env=aws_env)
 
 check_privacy_policy_consent()
 check_trace(not ignore_warnings)
