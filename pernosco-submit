@@ -293,7 +293,7 @@ def hg_remote_url_to_source_url_generator(remote_url):
         if m.group(1) == 'try':
             # Ignore 'try' because it gets purged frequently
             return None
-        return lambda rev: ("https://hg.mozilla.org/%s/raw-file/%s/"%(m.group(2), rev), None)
+        return lambda rev: ("https://hg.mozilla.org/%s/raw-file/%s/"%(m.group(1), rev), None)
     return None
 
 # Known Git hosts
