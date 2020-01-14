@@ -290,7 +290,7 @@ mozilla_re = re.compile('https://hg.mozilla.org/(.*)')
 def hg_remote_url_to_source_url_generator(remote_url):
     m = mozilla_re.match(remote_url)
     if m:
-        if m.group(2) == 'try':
+        if m.group(1) == 'try':
             # Ignore 'try' because it gets purged frequently
             return None
         return lambda rev: ("https://hg.mozilla.org/%s/raw-file/%s/"%(m.group(2), rev), None)
