@@ -509,6 +509,10 @@ def package_source_files():
     output = check_output(['rr', 'sources', trace_dir]).decode('utf-8')
     rr_sources = json.loads(output)
 
+    if 'dwos' in rr_sources and len(rr_sources['dwos']) > 0:
+        print("Split-DWARF not supported yet. Please build with split-DWARF disabled.", file=sys.stderr)
+        sys.exit(1)
+
     # Copy external debuginfo into place
     if 'external_debug_info' in rr_sources:
         for e in rr_sources['external_debug_info']:
