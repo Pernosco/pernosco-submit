@@ -417,9 +417,12 @@ def analyze_git_repo(repo_path, files):
          mount['urlSuffix'] = url_suffix
     return (mount, out_files)
 
+def safe_env():
+    return dict(os.environ, HGPLAIN='1')
+
 # Returns a hash of remote names to generators of URLs Pernosco can use to fetch files
 def hg_remotes(repo_path):
-    output = check_output(['hg', 'paths'], cwd=repo_path).decode('utf-8')
+    output = check_output(['hg', 'paths'], cwd=repo_path, env=safe_env()).decode('utf-8')
     ret = {}
     for line in output.splitlines():
         [remote, equals, url] = line.split()[:3]
@@ -434,7 +437,7 @@ def hg_find_rev(repo_path, remotes):
     best_remote = None
     for r in remotes:
         output = check_output(['hg', 'log', '-T', '{rev} {node}', '-r', "ancestor((parents(outgoing('%s') & ancestors(.))) | .)"%r],
-                              cwd=repo_path).decode('utf-8')
+                              cwd=repo_path, env=safe_env()).decode('utf-8')
         [rev_num, sha] = output.split()[:2]
         rev_num = int(rev_num)
         if rev_num > best_rev_num:
@@ -450,7 +453,7 @@ def hg_changed_files(repo_path, revision, files):
     for f in files:
         h[f] = True
     hg = Popen(['hg', 'status', '-nmaui', '--rev', revision],
-               cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+               cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=safe_env())
     ret = {}
     for line in hg.stdout:
         file = line.decode('utf-8').rstrip()
