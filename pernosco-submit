@@ -26,6 +26,7 @@ def usage():
     print("    --title <string>: Display the given name in the Pernosco UI and tab title", file=sys.stderr)
     print("    --url <url>: Make the name a link to the given URL", file=sys.stderr)
     print("    --consent-to-current-privacy-policy: Unconditionally consent to the current privacy policy", file=sys.stderr)
+    print("    --substitue <library>=<path>: Find the source for the named library at the named path. Adds path to the allowed source paths.", file=sys.stderr);
     print("  Only source files under the given path(s) will be uploaded.", file=sys.stderr)
     print(file=sys.stderr)
     print("%s keygen <provided-secret>"%sys.argv[0], file=sys.stderr)
@@ -60,6 +61,15 @@ def Popen(process_args, *args, **kwargs):
     if echo_commands:
         print("Running %s"%(" ".join(process_args)))
     return subprocess.Popen(process_args, *args, **kwargs)
+
+def get_rr_version():
+    version_re = re.compile(r'(\d+)\.(\d+)\.(\d+)')
+    output = check_output(['rr', '--version']).decode('utf-8')
+    m = version_re.search(output)
+    if m:
+        return (int(m[1]), int(m[2]), int(m[3]))
+    else:
+        return False
 
 def keygen():
     if len(sys.argv) != 3:
@@ -103,6 +113,9 @@ consent_to_current_privacy_policy = False
 metadata_title = None
 metadata_url = None
 ignore_warnings = False
+rr_version_checked = False
+comp_dir_substitutions = []
+source_dirs = []
 while len(sys.argv) > 2:
     if sys.argv[2] == "--consent-to-current-privacy-policy":
         del sys.argv[2]
@@ -126,12 +139,28 @@ while len(sys.argv) > 2:
     elif sys.argv[2] == "-x":
         del sys.argv[2]
         echo_commands = True
+    elif sys.argv[2].startswith("--substitute"):
+        if not rr_version_checked:
+            v = get_rr_version()
+            if v[0] <= 5 and v[1] < 4:
+                print("--substitute only works with rr version 5.4 or newer; found rr version %s.%s.%s" % v, file=sys.stderr)
+                sys.exit(1)
+        if sys.argv[2].startswith("--substitute="):
+            substitution = sys.argv[2].split('=', maxsplit=1)[1]
+            comp_dir_substitutions.append(sys.argv[2])
+            del sys.argv[2]
+        else:
+            substitution = sys.argv[3]
+            comp_dir_substitutions += [sys.argv[2], sys.argv[3]]
+            del sys.argv[2], sys.argv[3]
+        (library, path) = substitution.split('=', maxsplit=1)
+        if path:
+            source_dirs.append(os.path.realpath(path))
     else:
         break
 if len(sys.argv) < 3:
     usage()
 trace_dir = sys.argv[2]
-source_dirs = []
 for path in sys.argv[3:]:
     if path.startswith('-'):
         print("Unexpected option '%s' in path list; put all options before the trace directory or prepend './'"%path, file=sys.stderr)
@@ -507,9 +536,9 @@ def mkdir_p(path):
         else:
             raise
 
-def package_source_files():
+def package_source_files(comp_dir_substitutions):
     print("Obtaining source file list...")
-    output = check_output(['rr', 'sources', trace_dir]).decode('utf-8')
+    output = check_output(['rr', 'sources'] + comp_dir_substitutions + [trace_dir]).decode('utf-8')
     rr_sources = json.loads(output)
 
     if 'dwos' in rr_sources and len(rr_sources['dwos']) > 0:
@@ -705,6 +734,6 @@ check_trace(not ignore_warnings)
 write_metadata()
 rr_pack()
 package_libthread_db()
-repo_paths = package_source_files()
+repo_paths = package_source_files(comp_dir_substitutions)
 package_gdbinit(repo_paths)
 upload()
