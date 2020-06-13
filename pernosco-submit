@@ -62,15 +62,6 @@ def Popen(process_args, *args, **kwargs):
         print("Running %s"%(" ".join(process_args)))
     return subprocess.Popen(process_args, *args, **kwargs)
 
-def get_rr_version():
-    version_re = re.compile(r'(\d+)\.(\d+)\.(\d+)')
-    output = check_output(['rr', '--version']).decode('utf-8')
-    m = version_re.search(output)
-    if m:
-        return (int(m[1]), int(m[2]), int(m[3]))
-    else:
-        return False
-
 def keygen():
     if len(sys.argv) != 3:
         usage()
@@ -113,7 +104,6 @@ consent_to_current_privacy_policy = False
 metadata_title = None
 metadata_url = None
 ignore_warnings = False
-rr_version_checked = False
 comp_dir_substitutions = []
 source_dirs = []
 while len(sys.argv) > 2:
@@ -140,11 +130,6 @@ while len(sys.argv) > 2:
         del sys.argv[2]
         echo_commands = True
     elif sys.argv[2].startswith("--substitute"):
-        if not rr_version_checked:
-            v = get_rr_version()
-            if v[0] <= 5 and v[1] < 4:
-                print("--substitute only works with rr version 5.4 or newer; found rr version %s.%s.%s" % v, file=sys.stderr)
-                sys.exit(1)
         if sys.argv[2].startswith("--substitute="):
             substitution = sys.argv[2].split('=', maxsplit=1)[1]
             comp_dir_substitutions.append(sys.argv[2])
@@ -538,7 +523,14 @@ def mkdir_p(path):
 
 def package_source_files(comp_dir_substitutions):
     print("Obtaining source file list...")
-    output = check_output(['rr', 'sources'] + comp_dir_substitutions + [trace_dir]).decode('utf-8')
+    try:
+        output = check_output(['rr', 'sources'] + comp_dir_substitutions + [trace_dir]).decode('utf-8')
+    except subprocess.CalledProcessError as x:
+        if comp_dir_substitutions:
+            print("Error while running rr sources; your installed version of rr is not new enough to support the --substitute option.")
+        else:
+            print("Unknown error while running rr sources, aborting")
+        sys.exit(1)
     rr_sources = json.loads(output)
 
     if 'dwos' in rr_sources and len(rr_sources['dwos']) > 0:
