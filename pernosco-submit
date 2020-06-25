@@ -612,7 +612,7 @@ def package_source_files(comp_dir_substitutions):
     out_sources['relevance'] = 'Relevant'
     out_placeholders['files'] = out_placeholder_mounts
     out_placeholders['relevance'] = 'NotRelevant'
-    out_placeholders['priority'] = -1000
+    out_placeholders['priority'] = 1000
     with open('%s/sources.user'%trace_dir, "wt") as f:
         json.dump([out_sources, out_placeholders], f, indent=2)
     return repo_paths
