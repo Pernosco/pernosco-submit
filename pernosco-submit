@@ -108,6 +108,7 @@ ignore_warnings = False
 comp_dir_substitutions = []
 source_dirs = []
 allow_no_sources = False
+dry_run = False
 while len(sys.argv) > 2:
     if sys.argv[2] == "--consent-to-current-privacy-policy":
         del sys.argv[2]
@@ -134,6 +135,9 @@ while len(sys.argv) > 2:
     elif sys.argv[2] == "--no-sources":
         del sys.argv[2]
         allow_no_sources = True
+    elif sys.argv[2] == "--dry-run":
+        del sys.argv[2]
+        dry_run = True
     elif sys.argv[2].startswith("--substitute"):
         if sys.argv[2].startswith("--substitute="):
             substitution = sys.argv[2].split('=', maxsplit=1)[1]
@@ -730,6 +734,9 @@ def upload():
         metadata = "publickey=%s,signature=%s,user=%s,group=%s"%(strip_wrapper(public_key), signature, pernosco_user, pernosco_group)
         if 'PERNOSCO_EXTRA_METADATA' in os.environ:
             metadata += ",%s"%os.environ['PERNOSCO_EXTRA_METADATA']
+        if dry_run:
+            print("dry run: Stopping at upload")
+            sys.exit(0)
         check_call(["aws", "s3", "cp", "--metadata", metadata, payload_file.name, s3_url], env=aws_env)
 
 check_privacy_policy_consent()
