@@ -26,8 +26,9 @@ def usage():
     print("    --title <string>: Display the given name in the Pernosco UI and tab title", file=sys.stderr)
     print("    --url <url>: Make the name a link to the given URL", file=sys.stderr)
     print("    --consent-to-current-privacy-policy: Unconditionally consent to the current privacy policy", file=sys.stderr)
-    print("    --substitue <library>=<path>: Find the source for the named library at the named path. Adds path to the allowed source paths.", file=sys.stderr);
+    print("    --substitute <library>=<path>: Find the source for the named library at the named path. Adds path to the allowed source paths.", file=sys.stderr);
     print("  Only source files under the given path(s) will be uploaded.", file=sys.stderr)
+    print("  If no paths are provided, use --no-sources to proceed.", file=sys.stderr)
     print(file=sys.stderr)
     print("%s keygen <provided-secret>"%sys.argv[0], file=sys.stderr)
     print("  Generate a new public/private key pair for use with Pernosco. Only useful if someone has instructed you to use this.", file=sys.stderr)
@@ -106,6 +107,7 @@ metadata_url = None
 ignore_warnings = False
 comp_dir_substitutions = []
 source_dirs = []
+allow_no_sources = False
 while len(sys.argv) > 2:
     if sys.argv[2] == "--consent-to-current-privacy-policy":
         del sys.argv[2]
@@ -129,6 +131,9 @@ while len(sys.argv) > 2:
     elif sys.argv[2] == "-x":
         del sys.argv[2]
         echo_commands = True
+    elif sys.argv[2] == "--no-sources":
+        del sys.argv[2]
+        allow_no_sources = True
     elif sys.argv[2].startswith("--substitute"):
         if sys.argv[2].startswith("--substitute="):
             substitution = sys.argv[2].split('=', maxsplit=1)[1]
@@ -168,6 +173,12 @@ if not 'PERNOSCO_USER_SECRET_KEY' in os.environ:
     print("PERNOSCO_USER_SECRET_KEY not set", file=sys.stderr)
     sys.exit(1)
 pernosco_user_secret_key = os.environ['PERNOSCO_USER_SECRET_KEY']
+if not allow_no_sources and len(source_dirs) == 0:
+    print("No source directories were provided. Use --no-sources if this is intentional.")
+    sys.exit(1)
+if len(source_dirs) > 0 and allow_no_sources:
+    print("--no-sources was specified but source directories %s were provided"%source_dirs)
+    sys.exit(1)
 
 # Fetch current privacy policy version (or None if we fail to get it)
 def fetch_privacy_policy_version():
