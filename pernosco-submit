@@ -28,7 +28,7 @@ def usage():
     print("    --consent-to-current-privacy-policy: Unconditionally consent to the current privacy policy", file=sys.stderr)
     print("    --substitute <library>=<path>: Find the source for the named library at the named path. Adds path to the allowed source paths.", file=sys.stderr);
     print("  Only source files under the given path(s) will be uploaded.", file=sys.stderr)
-    print("  If no paths are provided, use --no-sources to proceed.", file=sys.stderr)
+    print("  If no paths are provided, use --no-local-sources to proceed.", file=sys.stderr)
     print(file=sys.stderr)
     print("%s keygen <provided-secret>"%sys.argv[0], file=sys.stderr)
     print("  Generate a new public/private key pair for use with Pernosco. Only useful if someone has instructed you to use this.", file=sys.stderr)
@@ -132,7 +132,7 @@ while len(sys.argv) > 2:
     elif sys.argv[2] == "-x":
         del sys.argv[2]
         echo_commands = True
-    elif sys.argv[2] == "--no-sources":
+    elif sys.argv[2] == "--no-local-sources":
         del sys.argv[2]
         allow_no_sources = True
     elif sys.argv[2] == "--dry-run":
@@ -178,10 +178,10 @@ if not 'PERNOSCO_USER_SECRET_KEY' in os.environ:
     sys.exit(1)
 pernosco_user_secret_key = os.environ['PERNOSCO_USER_SECRET_KEY']
 if not allow_no_sources and len(source_dirs) == 0:
-    print("No source directories were provided. Use --no-sources if this is intentional.")
+    print("No source directories were provided. Use --no-local-sources if this is intentional.")
     sys.exit(1)
 if len(source_dirs) > 0 and allow_no_sources:
-    print("--no-sources was specified but source directories %s were provided"%source_dirs)
+    print("--no-local-sources was specified but source directories %s were provided"%source_dirs)
     sys.exit(1)
 
 # Fetch current privacy policy version (or None if we fail to get it)
