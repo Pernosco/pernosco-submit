@@ -548,9 +548,13 @@ def package_source_files(comp_dir_substitutions):
         sys.exit(1)
     rr_sources = json.loads(output)
 
-    if 'dwos' in rr_sources and len(rr_sources['dwos']) > 0:
-        print("Split-DWARF not supported yet. Please build with split-DWARF disabled.", file=sys.stderr)
-        sys.exit(1)
+    if 'dwos' in rr_sources:
+        dir = "%s/debug/.dwo/"%trace_dir
+        mkdir_p(dir)
+        for e in rr_sources['dwos']:
+            path = os.path.join(e['comp_dir'], e['name'])
+            dst = "{0:s}/{1:0{2}x}.dwo".format(dir, e['id'], 16)
+            shutil.copy(path, dst)
 
     # Copy external debuginfo into place
     if 'external_debug_info' in rr_sources:
