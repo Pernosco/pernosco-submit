@@ -694,7 +694,7 @@ def upload():
             print("-----BEGIN EC PRIVATE KEY-----\n%s\n-----END EC PRIVATE KEY-----"%pernosco_secret_key, file=key_file)
             key_file.seek(0)
             public_key = check_output(['openssl', 'ec', '-pubout'], stdin=key_file, stderr=subprocess.DEVNULL).decode('utf-8')
-            p0 = Popen(["tar", "-I", "zstdmt", "--exclude", "db*", "-cf", "-", "."], cwd=trace_dir, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            p0 = Popen(["tar", "-I", "zstdmt", "--exclude", "./db*", "-cf", "-", "."], cwd=trace_dir, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             p1 = Popen(["tee", payload_file.name], stdin=p0.stdout, stdout=subprocess.PIPE)
             p0.stdout.close()
             os.set_inheritable(key_file.fileno(), True)
