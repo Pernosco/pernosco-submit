@@ -348,7 +348,11 @@ def git_remote_url_to_source_url_generator(remote_url, repo_path):
     m = googlesource_re.match(remote_url)
     if m:
         # googlesource uses gitiles
-        return lambda rev: ("https://%s/%s/+/%s/"%(m.group(1), m.group(2), rev), "?format=TEXT")
+        path = m.group(2)
+        # Strip auth request
+        if path.startswith("a/"):
+            path = path[2:]
+        return lambda rev: ("https://%s/%s/+/%s/"%(m.group(1), path, rev), "?format=TEXT")
     if remote_url.startswith('hg::'):
         # Cinnabar Mercurial host
         hg = hg_remote_url_to_source_url_generator(remote_url[4:])
