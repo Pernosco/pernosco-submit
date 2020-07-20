@@ -276,7 +276,7 @@ def check_trace(fatal=True):
                 print("Ignoring presence of sensitive environment variables. Values will be disclosed!", file=sys.stderr)
 
 def maybe_write_mozilla_metadata():
-    for firefox_bin in glob.glob("%s/mmap_*_firefox-bin"%trace_dir):
+    for firefox_bin in glob.glob("%s/mmap_*_firefox*"%trace_dir):
         original_file_names = check_output(['rr', 'filename', firefox_bin])
         for name in original_file_names.splitlines():
             application_ini = b"%s/application.ini"%os.path.dirname(name)
