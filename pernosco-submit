@@ -27,6 +27,7 @@ def usage():
     print("    --url <url>: Make the name a link to the given URL", file=sys.stderr)
     print("    --consent-to-current-privacy-policy: Unconditionally consent to the current privacy policy", file=sys.stderr)
     print("    --substitute <library>=<path>: Find the source for the named library at the named path. Adds path to the allowed source paths.", file=sys.stderr);
+    print("    --dry-run <path>: Instead of uploading the package, copies it to the given path. Also writes the command/env to <path>.cmd.", file=sys.stderr);
     print("  Only source files under the given path(s) will be uploaded.", file=sys.stderr)
     print("  If no paths are provided, use --no-local-sources to proceed.", file=sys.stderr)
     print(file=sys.stderr)
@@ -108,7 +109,7 @@ ignore_warnings = False
 comp_dir_substitutions = []
 source_dirs = []
 allow_no_sources = False
-dry_run = False
+dry_run = None
 while len(sys.argv) > 2:
     if sys.argv[2] == "--consent-to-current-privacy-policy":
         del sys.argv[2]
@@ -135,9 +136,9 @@ while len(sys.argv) > 2:
     elif sys.argv[2] == "--no-local-sources":
         del sys.argv[2]
         allow_no_sources = True
-    elif sys.argv[2] == "--dry-run":
-        del sys.argv[2]
-        dry_run = True
+    elif sys.argv[2] == "--dry-run" and len(sys.argv) > 3:
+        dry_run = sys.argv[3]
+        del sys.argv[2:4]
     elif sys.argv[2].startswith("--substitute"):
         if sys.argv[2].startswith("--substitute="):
             substitution = sys.argv[2].split('=', maxsplit=1)[1]
@@ -315,6 +316,7 @@ def package_libthread_db():
 
 # Known Mercurial hosts
 mozilla_re = re.compile('https://hg.mozilla.org/(.*)')
+sourceforge_re = re.compile('http://hg.code.sf.net/(.*)')
 
 def hg_remote_url_to_source_url_generator(remote_url):
     m = mozilla_re.match(remote_url)
@@ -323,6 +325,9 @@ def hg_remote_url_to_source_url_generator(remote_url):
             # Ignore 'try' because it gets purged frequently
             return None
         return lambda rev: ("https://hg.mozilla.org/%s/raw-file/%s/"%(m.group(1), rev), None)
+    m = sourceforge_re.match(remote_url)
+    if m:
+        return lambda rev: ("https://sourceforge.net/%s/ci/%s/tree/"%(m.group(1), rev), "?format=raw")
     return None
 
 # Known Git hosts
@@ -461,7 +466,7 @@ def hg_remotes(repo_path):
     return ret
 
 def hg_find_rev(repo_path, remotes):
-    best_rev_num = 0
+    best_rev_num = -1
     best_sha = None
     best_remote = None
     for r in remotes:
@@ -473,7 +478,7 @@ def hg_find_rev(repo_path, remotes):
             best_rev_num = rev_num
             best_sha = sha
             best_remote = r
-    if best_rev_num == 0:
+    if best_rev_num < 0:
         return None
     return (best_sha, best_remote)
 
@@ -716,32 +721,41 @@ def upload():
         # Strip '=' because it requires %-encoding in URLs
         nonce = base64.urlsafe_b64encode(hasher.digest()[:8]).decode('utf-8').rstrip('=')
         s3_url = "s3://pernosco-upload/%s.tar.zst"%nonce
-        print("Uploading %d bytes to %s..."%(os.path.getsize(payload_file.name), s3_url))
+        really = ''
+        if dry_run:
+              really = " (not really)"
+        print("Uploading %d bytes to %s...%s"%(os.path.getsize(payload_file.name), s3_url, really))
         aws_env = dict(os.environ,
             AWS_DEFAULT_REGION='us-east-2',
             AWS_ACCESS_KEY_ID=aws_access_key_id,
             AWS_SECRET_ACCESS_KEY=aws_secret_access_key)
-        # Check our credentials before proceeding further.
+
         checker_args = ["aws", "lambda", "invoke", "--function-name", "upload-credential-check", "--qualifier"]
         if 'PERNOSCO_CREDENTIAL_CHECKER' in os.environ:
             checker_args.extend([os.environ['PERNOSCO_CREDENTIAL_CHECKER']])
         else:
             checker_args.extend(["PROD"])
         checker_args.extend(["--payload", "\"publickey=%s,user=%s,group=%s\""%(strip_wrapper(public_key), pernosco_user, pernosco_group), "/dev/null"])
-        p3 = Popen(checker_args, env=aws_env, stdout=subprocess.PIPE)
-        check_result = p3.communicate()[0].decode("utf-8")
-        if check_result.find("Unhandled") != -1:
-            raise CustomException("Your upload credentials are not valid. Check them and try again.")
 
         # Send the public key with the signature so the server can easily
         # determine which key was used and check that the key is authorized
         metadata = "publickey=%s,signature=%s,user=%s,group=%s"%(strip_wrapper(public_key), signature, pernosco_user, pernosco_group)
         if 'PERNOSCO_EXTRA_METADATA' in os.environ:
             metadata += ",%s"%os.environ['PERNOSCO_EXTRA_METADATA']
+        aws_cmd = ["aws", "s3", "cp", "--metadata", metadata, payload_file.name, s3_url]
+
         if dry_run:
-            print("dry run: Stopping at upload")
-            sys.exit(0)
-        check_call(["aws", "s3", "cp", "--metadata", metadata, payload_file.name, s3_url], env=aws_env)
+            check_call(["cp", payload_file.name, dry_run])
+            cmd_obj = dict(checker_cmd=checker_args, aws_cmd=aws_cmd, aws_env=aws_env)
+            with open("%s.cmd"%dry_run, "w") as cmd:
+                print(json.dumps(cmd_obj), file=cmd)
+        else:
+            # Check our credentials before proceeding further.
+            p3 = Popen(checker_args, env=aws_env, stdout=subprocess.PIPE)
+            check_result = p3.communicate()[0].decode("utf-8")
+            if check_result.find("Unhandled") != -1:
+                raise CustomException("Your upload credentials are not valid. Check them and try again.")
+            check_call(aws_cmd, env=aws_env)
 
 check_privacy_policy_consent()
 check_trace(not ignore_warnings)
