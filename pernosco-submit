@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import base64
 import errno
 import glob
@@ -19,21 +20,25 @@ import zipfile
 class CustomException(Exception):
     pass
 
-def usage():
-    print("Usage:", file=sys.stderr)
-    print("%s upload [--title <string>] [--url <url>] [--consent-to-current-privacy-policy] <trace-dir> [<source-path>...]"%sys.argv[0], file=sys.stderr)
-    print("  Upload a trace to Pernosco", file=sys.stderr)
-    print("    --title <string>: Display the given name in the Pernosco UI and tab title", file=sys.stderr)
-    print("    --url <url>: Make the name a link to the given URL", file=sys.stderr)
-    print("    --consent-to-current-privacy-policy: Unconditionally consent to the current privacy policy", file=sys.stderr)
-    print("    --substitute <library>=<path>: Find the source for the named library at the named path. Adds path to the allowed source paths.", file=sys.stderr);
-    print("    --dry-run <path>: Instead of uploading the package, copies it to the given path. Also writes the command/env to <path>.cmd.", file=sys.stderr);
-    print("  Only source files under the given path(s) will be uploaded.", file=sys.stderr)
-    print("  If no paths are provided, use --no-local-sources to proceed.", file=sys.stderr)
-    print(file=sys.stderr)
-    print("%s keygen <provided-secret>"%sys.argv[0], file=sys.stderr)
-    print("  Generate a new public/private key pair for use with Pernosco. Only useful if someone has instructed you to use this.", file=sys.stderr)
-    sys.exit(1)
+arg_parser = argparse.ArgumentParser()
+arg_parser.add_argument("-x", dest='echo_commands', action='store_true', help="Echo spawned command lines")
+arg_parser.add_argument("--ignore-warnings", action='store_true', help="Making warnings non-fatal")
+arg_subparsers = arg_parser.add_subparsers(dest='subcommand')
+
+keygen_subparser = arg_subparsers.add_parser("keygen", help="Generate a new public/private key pair for use with Pernosco. Only useful if someone has instructed you to use this.")
+keygen_subparser.add_argument("provided_secret")
+
+upload_subparser = arg_subparsers.add_parser("upload", help="Upload a trace to Pernosco")
+upload_subparser.add_argument("--title", help="Display the given name in the Pernosco UI and tab title")
+upload_subparser.add_argument("--url", help="Make the name a link to the given URL")
+upload_subparser.add_argument("--consent-to-current-privacy-policy", action='store_true', help="Unconditionally consent to the current privacy policy")
+upload_subparser.add_argument("--no-local-sources", action='store_true', help="Don't try to upload any locally modified or generated sources")
+upload_subparser.add_argument("--substitute", metavar='LIB_PATH=WITH_PATH', action='append', default=[], help="Find the source for the named library at the named path. Adds WITH_PATH to the allowed source paths.")
+upload_subparser.add_argument("--dry-run", metavar="PATH", help="Instead of uploading the package, copies it to the given path. Also writes the command/env to <path>.cmd.")
+upload_subparser.add_argument("trace_dir")
+upload_subparser.add_argument("source_dirs", nargs="*")
+
+args = arg_parser.parse_args()
 
 def strip_wrapper(s):
     ret = ""
@@ -48,142 +53,20 @@ def check_executable(executable, package):
         print("Cannot find `%s`. Please install package `%s`."%(executable, package), file=sys.stderr)
         sys.exit(1)
 
-echo_commands = False
-def check_output(process_args, *args, **kwargs):
-    if echo_commands:
+def check_output(process_args, *proc_args, **kwargs):
+    if args.echo_commands:
         print("Running %s"%(" ".join(process_args)))
-    return subprocess.check_output(process_args, *args, **kwargs)
+    return subprocess.check_output(process_args, *proc_args, **kwargs)
 
-def check_call(process_args, *args, **kwargs):
-    if echo_commands:
+def check_call(process_args, *proc_args, **kwargs):
+    if args.echo_commands:
         print("Running %s"%(" ".join(process_args)))
-    return subprocess.check_call(process_args, *args, **kwargs)
+    return subprocess.check_call(process_args, *proc_args, **kwargs)
 
-def Popen(process_args, *args, **kwargs):
-    if echo_commands:
+def Popen(process_args, *proc_args, **kwargs):
+    if args.echo_commands:
         print("Running %s"%(" ".join(process_args)))
-    return subprocess.Popen(process_args, *args, **kwargs)
-
-def keygen():
-    if len(sys.argv) != 3:
-        usage()
-    check_executable('openssl', 'openssl')
-
-    provided = sys.argv[2]
-    if len(provided.split(',')) != 2:
-        print("Invalid <provided-secret> argument", file=sys.stderr)
-    full_key = check_output(['openssl', 'ecparam', '-genkey', '-name', 'prime256v1', '-noout'])
-    public_key = check_output(['openssl', 'ec', '-pubout'], input=full_key, stderr=subprocess.DEVNULL).decode('utf-8')
-    print("Private key: PERNOSCO_USER_SECRET_KEY=%s,%s"%(provided, strip_wrapper(full_key.decode('utf-8'))))
-    print("Public key: %s"%strip_wrapper(public_key))
-
-if len(sys.argv) < 2:
-    usage()
-cmd = sys.argv[1]
-if cmd == 'keygen':
-    keygen()
-    sys.exit(0)
-if cmd != 'upload' or len(sys.argv) < 3:
-    usage()
-
-check_executable('openssl', 'openssl')
-check_executable('tar', 'tar')
-check_executable('zstdmt', 'zstd')
-if not shutil.which('aws'):
-    print("Please install the AWS command-line tools using", file=sys.stderr)
-    print("  sudo pip3 install awscli --upgrade", file=sys.stderr)
-    print("(Distribution packages may fail due to https://github.com/aws/aws-cli/issues/2403.)", file=sys.stderr)
-    sys.exit(1)
-if not shutil.which('rr'):
-    print("Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
-    sys.exit(1)
-status = subprocess.run(['rr', 'traceinfo', '/dev/null'], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-if status.returncode != 65:
-    print("rr is out of date. Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
-    sys.exit(1)
-
-consent_to_current_privacy_policy = False
-metadata_title = None
-metadata_url = None
-ignore_warnings = False
-comp_dir_substitutions = []
-source_dirs = []
-allow_no_sources = False
-dry_run = None
-while len(sys.argv) > 2:
-    if sys.argv[2] == "--consent-to-current-privacy-policy":
-        del sys.argv[2]
-        consent_to_current_privacy_policy = True
-    elif sys.argv[2] == "--title" and len(sys.argv) > 3:
-        metadata_title = sys.argv[3]
-        if len(metadata_title.encode('utf-8')) > 100:
-            print("Title must have max 100 UTF-8 bytes", file=sys.stderr)
-            exit(1)
-        del sys.argv[2:4]
-    elif sys.argv[2] == "--url" and len(sys.argv) > 3:
-        metadata_url = sys.argv[3]
-        if len(metadata_url.encode('utf-8')) > 1000:
-            print("Url must have max 1000 UTF-8 bytes", file=sys.stderr)
-            exit(1)
-        del sys.argv[2:4]
-    elif sys.argv[2] == "--ignore-warnings":
-        del sys.argv[2]
-        ignore_warnings = True
-        print("Ignoring the automated trace check (not recommended!)", file=sys.stderr)
-    elif sys.argv[2] == "-x":
-        del sys.argv[2]
-        echo_commands = True
-    elif sys.argv[2] == "--no-local-sources":
-        del sys.argv[2]
-        allow_no_sources = True
-    elif sys.argv[2] == "--dry-run" and len(sys.argv) > 3:
-        dry_run = sys.argv[3]
-        del sys.argv[2:4]
-    elif sys.argv[2].startswith("--substitute"):
-        if sys.argv[2].startswith("--substitute="):
-            substitution = sys.argv[2].split('=', maxsplit=1)[1]
-            comp_dir_substitutions.append(sys.argv[2])
-            del sys.argv[2]
-        else:
-            substitution = sys.argv[3]
-            comp_dir_substitutions += [sys.argv[2], sys.argv[3]]
-            del sys.argv[2], sys.argv[3]
-        (library, path) = substitution.split('=', maxsplit=1)
-        if path:
-            source_dirs.append(os.path.realpath(path))
-    else:
-        break
-if len(sys.argv) < 3:
-    usage()
-trace_dir = sys.argv[2]
-for path in sys.argv[3:]:
-    if path.startswith('-'):
-        print("Unexpected option '%s' in path list; put all options before the trace directory or prepend './'"%path, file=sys.stderr)
-        sys.exit(1)
-    # Apply realpath since our processing below depends on that
-    source_dirs.append(os.path.realpath(path))
-if not os.path.isfile("%s/version"%trace_dir):
-    print("Can't find rr trace in %s"%trace_dir, file=sys.stderr)
-    sys.exit(1)
-
-if not 'PERNOSCO_USER' in os.environ:
-    print("PERNOSCO_USER not set", file=sys.stderr)
-    sys.exit(1)
-pernosco_user = os.environ['PERNOSCO_USER']
-if not 'PERNOSCO_GROUP' in os.environ:
-    print("PERNOSCO_GROUP not set", file=sys.stderr)
-    sys.exit(1)
-pernosco_group = os.environ['PERNOSCO_GROUP']
-if not 'PERNOSCO_USER_SECRET_KEY' in os.environ:
-    print("PERNOSCO_USER_SECRET_KEY not set", file=sys.stderr)
-    sys.exit(1)
-pernosco_user_secret_key = os.environ['PERNOSCO_USER_SECRET_KEY']
-if not allow_no_sources and len(source_dirs) == 0:
-    print("No source directories were provided. Use --no-local-sources if this is intentional.")
-    sys.exit(1)
-if len(source_dirs) > 0 and allow_no_sources:
-    print("--no-local-sources was specified but source directories %s were provided"%source_dirs)
-    sys.exit(1)
+    return subprocess.Popen(process_args, *proc_args, **kwargs)
 
 # Fetch current privacy policy version (or None if we fail to get it)
 def fetch_privacy_policy_version():
@@ -200,7 +83,7 @@ def fetch_privacy_policy_version():
     return None
 
 def check_privacy_policy_consent():
-    if consent_to_current_privacy_policy:
+    if args.consent_to_current_privacy_policy:
         return
     policy_version = fetch_privacy_policy_version()
     consent_file_dir = "%s/.local/share/pernosco"%os.environ['HOME']
@@ -251,15 +134,15 @@ SENSITIVE_ENV_VARS = {
     'SSHPASS': True,
 }
 
-def check_trace(fatal=True):
-    output = check_output(['rr', 'traceinfo', trace_dir]).decode('utf-8')
+def check_trace():
+    output = check_output(['rr', 'traceinfo', args.trace_dir]).decode('utf-8')
     trace_info = json.loads(output)
     if not 'environ' in trace_info:
         print("rr is out of date. Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
         sys.exit(1)
     if has_avx512(trace_info['cpuidRecords']) and not "PERNOSCO_TEST" in os.environ:
         print("AVX512 enabled when recording trace, but Pernosco does not support AVX512 yet.", file=sys.stderr)
-        if fatal:
+        if not args.ignore_warnings:
             print("Re-record with `rr record --disable-cpuid-features-ext 0x%x,0x%x,0x%x`."%(
                 AVX512_CPUID_EXTENDED_FEATURES_EBX, AVX512_CPUID_EXTENDED_FEATURES_ECX,
                 AVX512_CPUID_EXTENDED_FEATURES_EDX), file=sys.stderr)
@@ -270,48 +153,48 @@ def check_trace(fatal=True):
         name = env.split('=', 1)[0]
         if name in SENSITIVE_ENV_VARS:
             print("Sensitive environment variable %s found in initial recorded process."%name, file=sys.stderr)
-            if fatal:
+            if not args.ignore_warnings:
                 print("Re-record with environment variable unset.", file=sys.stderr)
                 sys.exit(2)
             else:
                 print("Ignoring presence of sensitive environment variables. Values will be disclosed!", file=sys.stderr)
 
 def maybe_write_mozilla_metadata():
-    for firefox_bin in glob.glob("%s/mmap_*_firefox*"%trace_dir):
+    for firefox_bin in glob.glob("%s/mmap_*_firefox*"%args.trace_dir):
         original_file_names = check_output(['rr', 'filename', firefox_bin])
         for name in original_file_names.splitlines():
             application_ini = b"%s/application.ini"%os.path.dirname(name)
             if os.path.isfile(application_ini):
-                os.makedirs("%s/files.mozilla"%trace_dir, exist_ok=True)
-                shutil.copyfile(application_ini, '%s/files.mozilla/application.ini'%trace_dir)
+                os.makedirs("%s/files.mozilla"%args.trace_dir, exist_ok=True)
+                shutil.copyfile(application_ini, '%s/files.mozilla/application.ini'%args.trace_dir)
                 return
 
-def write_metadata():
-    os.makedirs("%s/files.user"%trace_dir, exist_ok=True)
-    with open('%s/files.user/user'%trace_dir, "wt", encoding='utf-8') as f:
+def write_metadata(pernosco_user, pernosco_group):
+    os.makedirs("%s/files.user"%args.trace_dir, exist_ok=True)
+    with open('%s/files.user/user'%args.trace_dir, "wt", encoding='utf-8') as f:
         print(pernosco_user, file=f)
     metadata = {}
-    if metadata_title != None:
-        metadata['title'] = metadata_title
-    if metadata_url != None:
-        metadata['url'] = metadata_url
-    with open('%s/producer-metadata'%trace_dir, "wt", encoding='utf-8') as f:
+    if args.title != None:
+        metadata['title'] = args.title
+    if args.url != None:
+        metadata['url'] = args.url
+    with open('%s/producer-metadata'%args.trace_dir, "wt", encoding='utf-8') as f:
         print(json.dumps(metadata), file=f)
-    with open('%s/files.user/group'%trace_dir, "wt", encoding='utf-8') as f:
+    with open('%s/files.user/group'%args.trace_dir, "wt", encoding='utf-8') as f:
         print(pernosco_group, file=f)
     maybe_write_mozilla_metadata()
 
 def rr_pack():
     print("Running 'rr pack'...")
-    check_call(['rr', 'pack', trace_dir])
+    check_call(['rr', 'pack', args.trace_dir])
 
 def package_libthread_db():
     for f in ['/usr/lib64/libthread_db.so',
               '/usr/lib/x86_64-linux-gnu/libthread_db.so']:
         if os.path.isfile(f):
-            os.makedirs('%s/files.system-debuginfo'%trace_dir, exist_ok=True)
+            os.makedirs('%s/files.system-debuginfo'%args.trace_dir, exist_ok=True)
             print("Copying %s into trace..."%f)
-            shutil.copyfile(f, '%s/files.system-debuginfo/libthread_db.so'%trace_dir)
+            shutil.copyfile(f, '%s/files.system-debuginfo/libthread_db.so'%args.trace_dir)
             break
 
 # Known Mercurial hosts
@@ -526,7 +409,7 @@ def analyze_repo(repo_path, files):
         return analyze_hg_repo(repo_path, files)
     return (None, files)
 
-def allowed_file(file):
+def allowed_file(source_dirs, file):
     for f in source_dirs:
         if file.startswith(f):
             return True
@@ -541,10 +424,10 @@ def mkdir_p(path):
         else:
             raise
 
-def package_source_files(comp_dir_substitutions):
+def package_source_files(source_dirs, comp_dir_substitutions):
     print("Obtaining source file list...")
     try:
-        output = check_output(['rr', 'sources'] + comp_dir_substitutions + [trace_dir]).decode('utf-8')
+        output = check_output(['rr', 'sources'] + comp_dir_substitutions + [args.trace_dir]).decode('utf-8')
     except subprocess.CalledProcessError as x:
         if comp_dir_substitutions:
             print("Error while running rr sources; your installed version of rr is not new enough to support the --substitute option.")
@@ -554,7 +437,7 @@ def package_source_files(comp_dir_substitutions):
     rr_sources = json.loads(output)
 
     if 'dwos' in rr_sources:
-        dir = "%s/debug/.dwo/"%trace_dir
+        dir = "%s/debug/.dwo/"%args.trace_dir
         mkdir_p(dir)
         for e in rr_sources['dwos']:
             path = os.path.join(e['comp_dir'], e['name'])
@@ -565,7 +448,7 @@ def package_source_files(comp_dir_substitutions):
     if 'external_debug_info' in rr_sources:
         for e in rr_sources['external_debug_info']:
             build_id = e['build_id']
-            dir = "%s/debug/.build-id/%s"%(trace_dir, build_id[:2])
+            dir = "%s/debug/.build-id/%s"%(args.trace_dir, build_id[:2])
             mkdir_p(dir)
             t = e['type']
             if t == 'debuglink':
@@ -607,14 +490,14 @@ def package_source_files(comp_dir_substitutions):
     # Install non-repo files
     print("Packaging %d modified and %d non-repository files..."%(len(explicit_files) - non_repo_files_count, non_repo_files_count))
 
-    with zipfile.ZipFile('%s/files.user/sources.zip'%trace_dir, mode='w', compression=zipfile.ZIP_DEFLATED) as zip_file:
+    with zipfile.ZipFile('%s/files.user/sources.zip'%args.trace_dir, mode='w', compression=zipfile.ZIP_DEFLATED) as zip_file:
         for f in explicit_files:
-            if allowed_file(f):
+            if allowed_file(source_dirs, f):
                 zip_file.write(f)
     disallowed_file_count = 0
-    with zipfile.ZipFile('%s/files.user/sources-placeholders.zip'%trace_dir, mode='w', compression=zipfile.ZIP_DEFLATED) as zip_file:
+    with zipfile.ZipFile('%s/files.user/sources-placeholders.zip'%args.trace_dir, mode='w', compression=zipfile.ZIP_DEFLATED) as zip_file:
         for f in explicit_files:
-            if not allowed_file(f):
+            if not allowed_file(source_dirs, f):
                 content = ("/* This file was not uploaded because the path %s is not under the allowed directories [%s] */"%
                     (f, ", ".join(['"%s"'%d for d in source_dirs])))
                 zip_file.writestr(f, content)
@@ -637,7 +520,7 @@ def package_source_files(comp_dir_substitutions):
     out_placeholders['files'] = out_placeholder_mounts
     out_placeholders['relevance'] = 'NotRelevant'
     out_placeholders['priority'] = 1000
-    with open('%s/sources.user'%trace_dir, "wt") as f:
+    with open('%s/sources.user'%args.trace_dir, "wt") as f:
         json.dump([out_sources, out_placeholders], f, indent=2)
     return repo_paths
 
@@ -654,7 +537,7 @@ gdb_paths = [
 ]
 
 def package_gdbinit(repo_paths):
-    gdbinit_dir = "%s/gdbinit"%trace_dir
+    gdbinit_dir = "%s/gdbinit"%args.trace_dir
     shutil.rmtree(gdbinit_dir, ignore_errors=True)
     gdbinit_sub_paths = []
     for repo in repo_paths:
@@ -691,7 +574,7 @@ end
                 print("directory /trace/gdbinit/%s"%sub_path, file=f)
                 print("source /trace/gdbinit/%s/.gdbinit"%sub_path, file=f)
 
-def upload():
+def upload(pernosco_user, pernosco_group, pernosco_user_secret_key):
     [aws_access_key_id, aws_secret_access_key, pernosco_secret_key] = pernosco_user_secret_key.split(',')
     with tempfile.NamedTemporaryFile(mode="w+b") as payload_file:
         print("Compressing to %s..."%payload_file.name)
@@ -699,7 +582,7 @@ def upload():
             print("-----BEGIN EC PRIVATE KEY-----\n%s\n-----END EC PRIVATE KEY-----"%pernosco_secret_key, file=key_file)
             key_file.seek(0)
             public_key = check_output(['openssl', 'ec', '-pubout'], stdin=key_file, stderr=subprocess.DEVNULL).decode('utf-8')
-            p0 = Popen(["tar", "-I", "zstdmt", "--exclude", "./db*", "-cf", "-", "."], cwd=trace_dir, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            p0 = Popen(["tar", "-I", "zstdmt", "--exclude", "./db*", "-cf", "-", "."], cwd=args.trace_dir, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             p1 = Popen(["tee", payload_file.name], stdin=p0.stdout, stdout=subprocess.PIPE)
             p0.stdout.close()
             os.set_inheritable(key_file.fileno(), True)
@@ -722,7 +605,7 @@ def upload():
         nonce = base64.urlsafe_b64encode(hasher.digest()[:8]).decode('utf-8').rstrip('=')
         s3_url = "s3://pernosco-upload/%s.tar.zst"%nonce
         really = ''
-        if dry_run:
+        if args.dry_run:
               really = " (not really)"
         print("Uploading %d bytes to %s...%s"%(os.path.getsize(payload_file.name), s3_url, really))
         aws_env = dict(os.environ,
@@ -744,10 +627,10 @@ def upload():
             metadata += ",%s"%os.environ['PERNOSCO_EXTRA_METADATA']
         aws_cmd = ["aws", "s3", "cp", "--metadata", metadata, payload_file.name, s3_url]
 
-        if dry_run:
-            check_call(["cp", payload_file.name, dry_run])
+        if args.dry_run:
+            check_call(["cp", payload_file.name, args.dry_run])
             cmd_obj = dict(checker_cmd=checker_args, aws_cmd=aws_cmd, aws_env=aws_env)
-            with open("%s.cmd"%dry_run, "w") as cmd:
+            with open("%s.cmd"%args.dry_run, "w") as cmd:
                 print(json.dumps(cmd_obj), file=cmd)
         else:
             # Check our credentials before proceeding further.
@@ -757,11 +640,90 @@ def upload():
                 raise CustomException("Your upload credentials are not valid. Check them and try again.")
             check_call(aws_cmd, env=aws_env)
 
-check_privacy_policy_consent()
-check_trace(not ignore_warnings)
-write_metadata()
-rr_pack()
-package_libthread_db()
-repo_paths = package_source_files(comp_dir_substitutions)
-package_gdbinit(repo_paths)
-upload()
+def keygen_cmd():
+    check_executable('openssl', 'openssl')
+
+    if len(args.provided_secret.split(',')) != 2:
+        print("Invalid <provided-secret> argument", file=sys.stderr)
+    full_key = check_output(['openssl', 'ecparam', '-genkey', '-name', 'prime256v1', '-noout'])
+    public_key = check_output(['openssl', 'ec', '-pubout'], input=full_key, stderr=subprocess.DEVNULL).decode('utf-8')
+    print("Private key: PERNOSCO_USER_SECRET_KEY=%s,%s"%(args.provided_secret, strip_wrapper(full_key.decode('utf-8'))))
+    print("Public key: %s"%strip_wrapper(public_key))
+
+def upload_cmd():
+    check_executable('openssl', 'openssl')
+    check_executable('tar', 'tar')
+    check_executable('zstdmt', 'zstd')
+    if not shutil.which('aws'):
+        print("Please install the AWS command-line tools using", file=sys.stderr)
+        print("  sudo pip3 install awscli --upgrade", file=sys.stderr)
+        print("(Distribution packages may fail due to https://github.com/aws/aws-cli/issues/2403.)", file=sys.stderr)
+        sys.exit(1)
+    if not shutil.which('rr'):
+        print("Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
+        sys.exit(1)
+    status = subprocess.run(['rr', 'traceinfo', '/dev/null'], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    if status.returncode != 65:
+        print("rr is out of date. Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
+        sys.exit(1)
+
+    if args.ignore_warnings:
+        print("Ignoring the automated trace check (not recommended!)", file=sys.stderr)
+
+    if args.title:
+        if len(args.title.encode('utf-8')) > 100:
+            print("Title must have max 100 UTF-8 bytes", file=sys.stderr)
+            exit(1)
+    if args.url:
+        if len(args.url.encode('utf-8')) > 1000:
+            print("Url must have max 1000 UTF-8 bytes", file=sys.stderr)
+            exit(1)
+    if not os.path.isfile("%s/version"%args.trace_dir):
+        print("Can't find rr trace in %s"%args.trace_dir, file=sys.stderr)
+        sys.exit(1)
+
+    comp_dir_substitutions = []
+    source_dirs = []
+    for s in args.substitute:
+        (library, path) = s.split('=', maxsplit=1)
+        if path:
+            source_dirs.append(os.path.realpath(path))
+        comp_dir_substitutions.extend(["--substitute", s])
+    for d in args.source_dirs:
+        source_dirs.append(os.path.realpath(d))
+
+    if not 'PERNOSCO_USER' in os.environ:
+        print("PERNOSCO_USER not set", file=sys.stderr)
+        sys.exit(1)
+    pernosco_user = os.environ['PERNOSCO_USER']
+    if not 'PERNOSCO_GROUP' in os.environ:
+        print("PERNOSCO_GROUP not set", file=sys.stderr)
+        sys.exit(1)
+    pernosco_group = os.environ['PERNOSCO_GROUP']
+    if not 'PERNOSCO_USER_SECRET_KEY' in os.environ:
+        print("PERNOSCO_USER_SECRET_KEY not set", file=sys.stderr)
+        sys.exit(1)
+    pernosco_user_secret_key = os.environ['PERNOSCO_USER_SECRET_KEY']
+    if not args.no_local_sources and len(source_dirs) == 0:
+        print("No source directories were provided. Use --no-local-sources if this is intentional.")
+        sys.exit(1)
+    if len(source_dirs) > 0 and args.no_local_sources:
+        print("--no-local-sources was specified but source directories %s were provided"%source_dirs)
+        sys.exit(1)
+
+    check_privacy_policy_consent()
+    check_trace()
+    write_metadata(pernosco_user, pernosco_group)
+    rr_pack()
+    package_libthread_db()
+    repo_paths = package_source_files(source_dirs, comp_dir_substitutions)
+    package_gdbinit(repo_paths)
+    upload(pernosco_user, pernosco_group, pernosco_user_secret_key)
+
+if args.subcommand == 'upload':
+    upload_cmd()
+elif args.subcommand == 'keygen':
+    keygen_cmd()
+else:
+    arg_parser.print_help(sys.stderr)
+    sys.exit(1)

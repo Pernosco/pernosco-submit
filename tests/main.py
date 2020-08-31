@@ -45,12 +45,17 @@ def record(env):
     trace_dir = "%s/main-%d"%(tmpdir, next_trace_id)
     next_trace_id += 1
 
-def submit_dry_run():
+def submit_dry_run(title='FAKE_TITLE', url='FAKE_URL'):
     upload_env = dict(clean_env, PERNOSCO_USER='pernosco-submit-test@pernos.co',
                       PERNOSCO_GROUP='pernosco-submit-test',
                       PERNOSCO_USER_SECRET_KEY=private_key)
-    return subprocess.run(['./pernosco-submit', 'upload', '--dry-run', '%s/dry-run'%tmpdir, '--consent-to-current-privacy-policy',
-                           '--title', 'FAKE_TITLE', '--url', 'FAKE_URL', trace_dir, tmpdir], env=upload_env)
+    cmd = ['./pernosco-submit', 'upload', '--dry-run', '%s/dry-run'%tmpdir, '--consent-to-current-privacy-policy']
+    if title:
+        cmd.extend(['--title', title])
+    if url:
+        cmd.extend(['--url', url])
+    cmd.extend([trace_dir, tmpdir])
+    return subprocess.run(cmd, env=upload_env)
 
 def validate_dry_run():
     with open('%s/dry-run.cmd'%tmpdir) as f:
@@ -73,11 +78,11 @@ def validate_dry_run():
     assert aws_env['AWS_ACCESS_KEY_ID'] == 'FAKE_KEY_ID'
     assert aws_env['AWS_SECRET_ACCESS_KEY'] == 'FAKE_CRED'
 
-def validate_producer_metadata():
+def validate_producer_metadata(title='FAKE_TITLE', url='FAKE_URL'):
     with open('%s/producer-metadata'%trace_dir) as f:
         producer_metadata = json.loads(f.read())
-    assert producer_metadata['title'] == 'FAKE_TITLE'
-    assert producer_metadata['url'] == 'FAKE_URL'
+    assert producer_metadata.get('title') == title
+    assert producer_metadata.get('url') == url
 
 def validate_files_user():
     with open('%s/files.user/user'%trace_dir) as f:
@@ -179,9 +184,10 @@ subprocess.check_call(['git', 'checkout', '-q', cinnabar_git_revision], cwd=test
 make_changes()
 build()
 record(clean_env)
-assert submit_dry_run().returncode == 0
+# Test skipping title/url
+assert submit_dry_run(title=None, url=None).returncode == 0
 validate_dry_run()
-validate_producer_metadata()
+validate_producer_metadata(title=None, url=None)
 validate_files_user()
 validate_sources_user('https://sourceforge.net/p/pernosco-submit-test/code/ci/%s/tree/'%pernosco_submit_test_hg_revision, "?format=raw")
 validate_sources_zip()
