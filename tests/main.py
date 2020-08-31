@@ -37,6 +37,11 @@ def make_changes():
 def build():
     subprocess.check_call(['./build.sh'], cwd=testdir)
 
+def create_extra_rr_trace_files():
+    os.makedirs("%s/out/extra_rr_trace_files/files.extra"%testdir)
+    with open("%s/out/extra_rr_trace_files/files.extra/data"%testdir, "w") as f:
+        f.write("Hello kitty")
+
 def record(env):
     global trace_dir
     global next_trace_id
@@ -90,6 +95,9 @@ def validate_files_user():
     with open('%s/files.user/group'%trace_dir) as f:
         assert f.read().strip() == "pernosco-submit-test"
 
+def validate_extra_rr_trace_files():
+    assert os.path.exists("%s/files.extra/data"%trace_dir)
+
 def validate_sources_user(repo_url, repo_url_suffix):
     with open('%s/sources.user'%trace_dir) as f:
         files_user = json.loads(f.read())
@@ -139,11 +147,13 @@ testdir = "%s/pernosco-submit-test"%tmpdir
 subprocess.check_call(['git', 'checkout', '-q', pernosco_submit_test_git_revision], cwd=testdir)
 make_changes()
 build()
+create_extra_rr_trace_files()
 record(clean_env)
 assert submit_dry_run().returncode == 0
 validate_dry_run()
 validate_producer_metadata()
 validate_files_user()
+validate_extra_rr_trace_files()
 validate_sources_user('https://raw.githubusercontent.com/Pernosco/pernosco-submit-test/%s/'%pernosco_submit_test_git_revision, None)
 validate_sources_zip()
 validate_libthread_db()

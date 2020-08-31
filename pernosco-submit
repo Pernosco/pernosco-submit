@@ -197,6 +197,25 @@ def package_libthread_db():
             shutil.copyfile(f, '%s/files.system-debuginfo/libthread_db.so'%args.trace_dir)
             break
 
+def package_extra_rr_trace_files():
+    extra_file_dirs = dict()
+    for binary in glob.glob("%s/mmap_*"%args.trace_dir):
+        original_file_names = check_output(['rr', 'filename', binary])
+        for name in original_file_names.splitlines():
+            extra_files_path = b"%s/extra_rr_trace_files"%os.path.dirname(name)
+            if os.path.isdir(extra_files_path):
+                extra_file_dirs[extra_files_path] = True
+    dir_list = list(extra_file_dirs.keys())
+    dir_list.sort()
+    for d in dir_list:
+        for f in os.listdir(d):
+            src_name = os.path.join(d, f)
+            dest_name = os.path.join(args.trace_dir.encode('utf-8'), f)
+            if os.path.isfile(src_name):
+                shutil.copyfile(src_name, dest_name)
+            else:
+                shutil.copytree(src_name, dest_name)
+
 # Known Mercurial hosts
 mozilla_re = re.compile('https://hg.mozilla.org/(.*)')
 sourceforge_re = re.compile('http://hg.code.sf.net/(.*)')
@@ -716,6 +735,7 @@ def upload_cmd():
     write_metadata(pernosco_user, pernosco_group)
     rr_pack()
     package_libthread_db()
+    package_extra_rr_trace_files()
     repo_paths = package_source_files(source_dirs, comp_dir_substitutions)
     package_gdbinit(repo_paths)
     upload(pernosco_user, pernosco_group, pernosco_user_secret_key)
