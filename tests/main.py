@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
+import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -113,8 +115,38 @@ def validate_sources_user(repo_url, repo_url_suffix):
     assert any(map(lambda x: x.get('link') == '%s/file.c'%testdir and x['at'] == '%s/out/file.c'%testdir, files))
     assert files_user[0]['relevance'] == 'Relevant'
 
+def build_id_for(file):
+    try:
+        output = subprocess.check_output(["readelf", "-n", file], stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as exc:
+        return None
+    m = re.search(b"Build ID: ([0-9a0-f]+)", output)
+    if m:
+        return m.group(1).decode('utf-8')
+    return None
+
+def validate_sources_extra(extra_part, repo_url, repo_url_suffix):
+    with open('%s/extra_rr_trace_files/sources.%s'%(tmpdir, extra_part)) as f:
+        files_user = json.loads(f.read())
+    or_condition = files_user[0]['condition']['or']
+    assert len(or_condition) == 1
+    assert or_condition[0]['buildid'] == build_id_for("%s/out/main"%testdir)
+    assert files_user[0]['buildDir'] == testdir
+    files = files_user[0]['files']
+    assert len(files) == 3
+    assert any(map(lambda x: x.get('url') == repo_url and x['at'] == testdir and x.get('urlSuffix') == repo_url_suffix, files))
+    assert any(map(lambda x: x.get('archive') == 'files.%s/sources.zip'%extra_part and x['at'] == '/', files))
+    assert any(map(lambda x: x.get('link') == '%s/file.c'%testdir and x['at'] == '%s/out/file.c'%testdir, files))
+    assert files_user[0]['relevance'] == 'Relevant'
+
 def validate_sources_zip():
-    sources_zip = zipfile.ZipFile('%s/files.user/sources.zip'%trace_dir)
+    validate_sources_zip_path('%s/files.user/sources.zip'%trace_dir)
+
+def validate_sources_extra_zip(extra_part):
+    validate_sources_zip_path('%s/extra_rr_trace_files/files.%s/sources.zip'%(tmpdir, extra_part))
+
+def validate_sources_zip_path(path):
+    sources_zip = zipfile.ZipFile(path)
     sources_zip.getinfo('%s/out/message.h'%testdir[1:])
     sources_zip.getinfo('%s/main.c'%testdir[1:])
     try:
@@ -154,7 +186,8 @@ validate_dry_run()
 validate_producer_metadata()
 validate_files_user()
 validate_extra_rr_trace_files()
-validate_sources_user('https://raw.githubusercontent.com/Pernosco/pernosco-submit-test/%s/'%pernosco_submit_test_git_revision, None)
+github_raw_url = 'https://raw.githubusercontent.com/Pernosco/pernosco-submit-test/%s/'%pernosco_submit_test_git_revision
+validate_sources_user(github_raw_url, None)
 validate_sources_zip()
 validate_libthread_db()
 validate_external_debuginfo()
@@ -166,6 +199,14 @@ for k in ['SSHPASS', 'AWS_SECRET_ACCESS_KEY', 'PERNOSCO_USER_SECRET_KEY']:
     unclean_env[k] = "abc"
     record(unclean_env)
     assert submit_dry_run().returncode == 2
+
+# Test analyze-build
+subprocess.check_call(["./pernosco-submit", "analyze-build", "--allow-source", testdir, "--build-dir", testdir, tmpdir, "%s/out/main"%testdir])
+sources_extra_name = glob.glob("%s/extra_rr_trace_files/sources.extra*"%tmpdir)
+assert len(sources_extra_name) == 1
+extra_part = os.path.basename(sources_extra_name[0])[8:]
+validate_sources_extra(extra_part, github_raw_url, None)
+validate_sources_extra_zip(extra_part)
 
 print("\nTesting Mercurial checkout...")
 
