@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -669,6 +670,11 @@ def upload(pernosco_user, pernosco_group, pernosco_user_secret_key):
         # Send the public key with the signature so the server can easily
         # determine which key was used and check that the key is authorized
         metadata = "publickey=%s,signature=%s,user=%s,group=%s"%(strip_wrapper(public_key), signature, pernosco_user, pernosco_group)
+        if args.title != None:
+            metadata += ",title=%s"%urllib.parse.quote(args.title)
+        if args.url != None:
+            metadata += ",url=%s"%urllib.parse.quote(args.url)
+
         if 'PERNOSCO_EXTRA_METADATA' in os.environ:
             metadata += ",%s"%os.environ['PERNOSCO_EXTRA_METADATA']
         aws_cmd = ["aws", "s3", "cp", "--metadata", metadata, payload_file.name, s3_url]

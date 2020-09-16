@@ -52,7 +52,7 @@ def record(env):
     trace_dir = "%s/main-%d"%(tmpdir, next_trace_id)
     next_trace_id += 1
 
-def submit_dry_run(title='FAKE_TITLE', url='FAKE_URL'):
+def submit_dry_run(title='FAKE TITLE', url='FAKE_ñ_URL'):
     upload_env = dict(clean_env, PERNOSCO_USER='pernosco-submit-test@pernos.co',
                       PERNOSCO_GROUP='pernosco-submit-test',
                       PERNOSCO_USER_SECRET_KEY=private_key)
@@ -64,7 +64,7 @@ def submit_dry_run(title='FAKE_TITLE', url='FAKE_URL'):
     cmd.extend([trace_dir, tmpdir])
     return subprocess.run(cmd, env=upload_env)
 
-def validate_dry_run():
+def validate_dry_run(title="FAKE%20TITLE", url="FAKE_%C3%B1_URL"):
     with open('%s/dry-run.cmd'%tmpdir) as f:
         cmd_obj = json.loads(f.read())
     aws_cmd = cmd_obj['aws_cmd']
@@ -77,6 +77,14 @@ def validate_dry_run():
     assert metadata[1].startswith("signature=")
     assert metadata[2] == "user=pernosco-submit-test@pernos.co"
     assert metadata[3] == "group=pernosco-submit-test"
+    expect_metadata_len = 4
+    if title != None:
+        assert metadata[expect_metadata_len] == "title=%s"%title
+        expect_metadata_len += 1
+    if url != None:
+        assert metadata[expect_metadata_len] == "url=%s"%url
+        expect_metadata_len += 1
+    assert len(metadata) == expect_metadata_len
     assert not os.path.exists(aws_cmd[5]) # temp file should have been cleaned up
     assert aws_cmd[6].startswith("s3://pernosco-upload/")
     assert aws_cmd[6].endswith(".tar.zst")
@@ -85,7 +93,7 @@ def validate_dry_run():
     assert aws_env['AWS_ACCESS_KEY_ID'] == 'FAKE_KEY_ID'
     assert aws_env['AWS_SECRET_ACCESS_KEY'] == 'FAKE_CRED'
 
-def validate_producer_metadata(title='FAKE_TITLE', url='FAKE_URL'):
+def validate_producer_metadata(title='FAKE TITLE', url='FAKE_ñ_URL'):
     with open('%s/producer-metadata'%trace_dir) as f:
         producer_metadata = json.loads(f.read())
     assert producer_metadata.get('title') == title
@@ -237,7 +245,7 @@ build()
 record(clean_env)
 # Test skipping title/url
 assert submit_dry_run(title=None, url=None).returncode == 0
-validate_dry_run()
+validate_dry_run(title=None, url=None)
 validate_producer_metadata(title=None, url=None)
 validate_files_user()
 validate_sources_user('https://sourceforge.net/p/pernosco-submit-test/code/ci/%s/tree/'%pernosco_submit_test_hg_revision, "?format=raw")
