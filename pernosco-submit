@@ -733,10 +733,6 @@ def upload_cmd():
         print("  sudo pip3 install awscli --upgrade", file=sys.stderr)
         print("(Distribution packages may fail due to https://github.com/aws/aws-cli/issues/2403.)", file=sys.stderr)
         sys.exit(1)
-    status = subprocess.run(['rr', 'traceinfo', '/dev/null'], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-    if status.returncode != 65:
-        print("rr is out of date. Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
-        sys.exit(1)
 
     if args.ignore_warnings:
         print("Ignoring the automated trace check (not recommended!)", file=sys.stderr)
