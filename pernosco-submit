@@ -142,6 +142,7 @@ def has_avx512(cpuid_records):
 SENSITIVE_ENV_VARS = {
     'PERNOSCO_USER_SECRET_KEY': True,
     'AWS_SECRET_ACCESS_KEY': True,
+    'DO_API_KEY': True,
     'SSHPASS': True,
 }
 
