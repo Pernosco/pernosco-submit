@@ -52,11 +52,16 @@ def record(env):
     trace_dir = "%s/main-%d"%(tmpdir, next_trace_id)
     next_trace_id += 1
 
+def main_binary():
+    return os.path.basename(glob.glob("%s/*main"%trace_dir)[0])
+
 def submit_dry_run(title='FAKE TITLE', url='FAKE_ñ_URL'):
     upload_env = dict(clean_env, PERNOSCO_USER='pernosco-submit-test@pernos.co',
                       PERNOSCO_GROUP='pernosco-submit-test',
                       PERNOSCO_USER_SECRET_KEY=private_key)
-    cmd = ['./pernosco-submit', 'upload', '--dry-run', '%s/dry-run'%tmpdir, '--consent-to-current-privacy-policy']
+    cmd = ['./pernosco-submit', 'upload',
+           '--substitute', '%s=%s'%(main_binary(), testdir),
+           '--dry-run', '%s/dry-run'%tmpdir, '--consent-to-current-privacy-policy']
     if title:
         cmd.extend(['--title', title])
     if url:
@@ -122,6 +127,20 @@ def validate_sources_user(repo_url, repo_url_suffix):
     assert any(map(lambda x: x.get('archive') == 'files.user/sources.zip' and x['at'] == '/', files))
     assert any(map(lambda x: x.get('link') == '%s/file.c'%testdir and x['at'] == '%s/out/file.c'%testdir, files))
     assert files_user[0]['relevance'] == 'Relevant'
+
+    or_condition = files_user[1]['condition']['or']
+    assert len(or_condition) == 2
+    assert any(map(lambda x: x['binary'].endswith('librrpreload.so'), or_condition))
+    assert any(map(lambda x: x['binary'].endswith('main'), or_condition))
+    files = files_user[1]['files']
+    assert len(files) == 1
+    assert files[0]['archive'] == 'files.user/sources-placeholders.zip'
+    assert files[0]['at'] == '/'
+    assert files_user[1]['relevance'] == 'NotRelevant'
+
+    assert files_user[2]['condition']['binary'] == main_binary()
+    assert files_user[2]['overrideCompDir'] == testdir
+    assert len(files_user) == 3
 
 def build_id_for(file):
     try:
@@ -209,7 +228,9 @@ for k in ['SSHPASS', 'AWS_SECRET_ACCESS_KEY', 'PERNOSCO_USER_SECRET_KEY']:
     assert submit_dry_run().returncode == 2
 
 # Test analyze-build
-subprocess.check_call(["./pernosco-submit", "analyze-build", "--allow-source", testdir, "--build-dir", testdir, tmpdir, "%s/out/main"%testdir])
+subprocess.check_call(["./pernosco-submit", "analyze-build",
+                       '--substitute', '%s=%s'%(main_binary(), testdir),
+                       "--allow-source", testdir, "--build-dir", testdir, tmpdir, "%s/out/main"%testdir])
 sources_extra_name = glob.glob("%s/extra_rr_trace_files/sources.extra*"%tmpdir)
 assert len(sources_extra_name) == 1
 extra_part = os.path.basename(sources_extra_name[0])[8:]

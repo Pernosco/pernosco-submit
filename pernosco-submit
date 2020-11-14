@@ -455,32 +455,34 @@ def mkdir_p(path):
         else:
             raise
 
-def package_source_files(source_dirs, comp_dir_substitutions):
+def run_rr_sources(comp_dir_substitutions, cmd, params):
     print("Obtaining source file list...")
+    rr_comp_dir_substitutions = []
+    for v in comp_dir_substitutions:
+        rr_comp_dir_substitutions.append("--substitute")
+        rr_comp_dir_substitutions.append("%s=%s"%(v[0], v[1]))
     try:
-        rr_output = check_output(['rr', 'sources'] + comp_dir_substitutions + [args.trace_dir]).decode('utf-8')
+        rr_output = check_output(['rr', cmd] + rr_comp_dir_substitutions + params).decode('utf-8')
     except subprocess.CalledProcessError as x:
         if comp_dir_substitutions:
             print("Error while running rr sources; your installed version of rr may not be new enough to support the --substitute option.")
         else:
             print("Unknown error while running rr sources, aborting")
         sys.exit(1)
-    return package_source_files_from_rr_output(source_dirs, rr_output, args.trace_dir, "user", "binary")
+    return rr_output
+
+def package_source_files(source_dirs, comp_dir_substitutions):
+    rr_output = run_rr_sources(comp_dir_substitutions, 'sources', [args.trace_dir])
+    return package_source_files_from_rr_output(source_dirs, rr_output, comp_dir_substitutions, args.trace_dir, "user", "binary")
 
 def package_source_files_extra(source_dirs, comp_dir_substitutions):
-    print("Obtaining source file list...")
-    try:
-        rr_output = check_output(['rr', 'explicit-sources'] + comp_dir_substitutions + args.binaries).decode('utf-8')
-    except subprocess.CalledProcessError as x:
-        print("Error while running rr sources; your installed version of rr may not be new enough to support the explicit-sources command.")
-        sys.exit(1)
+    rr_output = run_rr_sources(comp_dir_substitutions, 'explicit-sources', args.binaries)
     tag = "extra.%s"%(hex(random.randrange(pow(2,64)))[2:])
     output_dir = "%s/extra_rr_trace_files"%args.output_dir
     mkdir_p("%s/files.%s"%(output_dir, tag))
+    return package_source_files_from_rr_output(source_dirs, rr_output, comp_dir_substitutions, output_dir, tag, "buildid", build_dir=args.build_dir)
 
-    return package_source_files_from_rr_output(source_dirs, rr_output, output_dir, tag, "buildid", build_dir=args.build_dir)
-
-def package_source_files_from_rr_output(source_dirs, rr_output, output_dir, tag, condition_type, build_dir=None):
+def package_source_files_from_rr_output(source_dirs, rr_output, comp_dir_substitutions, output_dir, tag, condition_type, build_dir=None):
     rr_sources = json.loads(rr_output)
 
     if 'dwos' in rr_sources:
@@ -569,8 +571,16 @@ def package_source_files_from_rr_output(source_dirs, rr_output, output_dir, tag,
     out_placeholders['files'] = out_placeholder_mounts
     out_placeholders['relevance'] = 'NotRelevant'
     out_placeholders['priority'] = 1000
+
+    all_rules = [out_sources, out_placeholders]
+    for v in comp_dir_substitutions:
+        out_substitution = {}
+        out_substitution['condition'] = {'binary': v[0]};
+        out_substitution['overrideCompDir'] = v[1];
+        all_rules.append(out_substitution)
+
     with open('%s/sources.%s'%(output_dir, tag), "wt") as f:
-        json.dump([out_sources, out_placeholders], f, indent=2)
+        json.dump(all_rules, f, indent=2)
     return repo_paths
 
 # The files under these paths are copied into gdbinit/
@@ -716,20 +726,22 @@ def check_upload_analyze_requirements():
         sys.exit(1)
 
 def collect_source_dirs():
-    comp_dir_substitutions = []
     source_dirs = []
+    comp_dir_substitutions = []
     for s in args.substitute:
         (library, path) = s.split('=', maxsplit=1)
-        if path:
-            source_dirs.append(os.path.realpath(path))
-        comp_dir_substitutions.extend(["--substitute", s])
+        if not path:
+            print("Missing path in %s"%s, file=sys.stderr)
+            sys.exit(1)
+        source_dirs.append(os.path.realpath(path))
+        comp_dir_substitutions.append([library, path])
     for d in args.source_dirs:
         source_dirs.append(os.path.realpath(d))
     if not args.no_local_sources and len(source_dirs) == 0:
-        print("No source directories were provided. Use --no-local-sources if this is intentional.")
+        print("No source directories were provided. Use --no-local-sources if this is intentional.", file=sys.stderr)
         sys.exit(1)
     if len(source_dirs) > 0 and args.no_local_sources:
-        print("--no-local-sources was specified but source directories %s were provided"%source_dirs)
+        print("--no-local-sources was specified but source directories %s were provided"%source_dirs, file=sys.stderr)
         sys.exit(1)
     return (source_dirs, comp_dir_substitutions)
 
