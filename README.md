@@ -15,7 +15,7 @@ sudo pip3 install awscli --upgrade
 ```
 Ubuntu and Debian packages [can have issues](https://github.com/aws/aws-cli/issues/2403).
 
-You must use rr master, at least commit [6116360abd43b2098efcd8f37a6e6bab61ca7a79](https://github.com/mozilla/rr/commit/6116360abd43b2098efcd8f37a6e6bab61ca7a79).
+You must use rr master, at least commit [6116360abd43b2098efcd8f37a6e6bab61ca7a79](https://github.com/rr-debugger/rr/commit/6116360abd43b2098efcd8f37a6e6bab61ca7a79).
 
 ## Usage
 

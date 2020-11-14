@@ -118,7 +118,7 @@ def validate_sources_user(repo_url, repo_url_suffix):
     files = files_user[0]['files']
     assert len(files) == 4
     assert any(map(lambda x: x.get('url') == repo_url and x['at'] == testdir and x.get('urlSuffix') == repo_url_suffix, files))
-    assert any(map(lambda x: x.get('url') and x['url'].startswith('https://raw.githubusercontent.com/mozilla/rr/'), files))
+    assert any(map(lambda x: x.get('url') and x['url'].startswith('https://raw.githubusercontent.com/rr-debugger/rr/'), files))
     assert any(map(lambda x: x.get('archive') == 'files.user/sources.zip' and x['at'] == '/', files))
     assert any(map(lambda x: x.get('link') == '%s/file.c'%testdir and x['at'] == '%s/out/file.c'%testdir, files))
     assert files_user[0]['relevance'] == 'Relevant'
