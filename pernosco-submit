@@ -144,6 +144,7 @@ SENSITIVE_ENV_VARS = {
     'AWS_SECRET_ACCESS_KEY': True,
     'DO_API_KEY': True,
     'SSHPASS': True,
+    'STRIPE_SECRET_KEY': True,
 }
 
 def check_trace():
