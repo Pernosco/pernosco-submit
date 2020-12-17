@@ -746,6 +746,20 @@ def collect_source_dirs():
         sys.exit(1)
     return (source_dirs, comp_dir_substitutions)
 
+def get_config_var(name):
+    env_var = "PERNOSCO_%s"%(name.upper())
+    if env_var in os.environ:
+        return os.environ[env_var]
+    if 'HOME' in os.environ:
+        path = "%s/.config/pernosco/%s"%(os.environ['HOME'], name)
+        try:
+            with open(path, "r") as file:
+                return file.read().replace('\n', '')
+        except:
+            pass
+    print("Can't find %s or ~/.config/pernosco/%s"%(env_var, name), file=sys.stderr)
+    sys.exit(1)
+
 def upload_cmd():
     check_upload_analyze_requirements()
     if not shutil.which('aws'):
@@ -769,18 +783,9 @@ def upload_cmd():
         print("Can't find rr trace in %s"%args.trace_dir, file=sys.stderr)
         sys.exit(1)
 
-    if not 'PERNOSCO_USER' in os.environ:
-        print("PERNOSCO_USER not set", file=sys.stderr)
-        sys.exit(1)
-    pernosco_user = os.environ['PERNOSCO_USER']
-    if not 'PERNOSCO_GROUP' in os.environ:
-        print("PERNOSCO_GROUP not set", file=sys.stderr)
-        sys.exit(1)
-    pernosco_group = os.environ['PERNOSCO_GROUP']
-    if not 'PERNOSCO_USER_SECRET_KEY' in os.environ:
-        print("PERNOSCO_USER_SECRET_KEY not set", file=sys.stderr)
-        sys.exit(1)
-    pernosco_user_secret_key = os.environ['PERNOSCO_USER_SECRET_KEY']
+    pernosco_user = get_config_var('user')
+    pernosco_group = get_config_var('group')
+    pernosco_user_secret_key = get_config_var('user_secret_key')
 
     (source_dirs, comp_dir_substitutions) = collect_source_dirs()
 

@@ -55,10 +55,18 @@ def record(env):
 def main_binary():
     return os.path.basename(glob.glob("%s/*main"%trace_dir)[0])
 
-def submit_dry_run(title='FAKE TITLE', url='FAKE_ñ_URL'):
+def submit_dry_run(title='FAKE TITLE', url='FAKE_ñ_URL', prefer_env_vars=True):
+    path = "%s/.config/pernosco/user_secret_key"%os.environ['HOME']
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     upload_env = dict(clean_env, PERNOSCO_USER='pernosco-submit-test@pernos.co',
-                      PERNOSCO_GROUP='pernosco-submit-test',
-                      PERNOSCO_USER_SECRET_KEY=private_key)
+                      PERNOSCO_GROUP='pernosco-submit-test')
+    delete_path = False
+    if prefer_env_vars or os.path.exists(path):
+        upload_env['PERNOSCO_USER_SECRET_KEY'] = private_key
+    else:
+        with open(path, "w") as f:
+            f.write(private_key)
+        delete_path = True
     cmd = ['./pernosco-submit', 'upload',
            '--substitute', '%s=%s'%(main_binary(), testdir),
            '--dry-run', '%s/dry-run'%tmpdir, '--consent-to-current-privacy-policy']
@@ -67,7 +75,10 @@ def submit_dry_run(title='FAKE TITLE', url='FAKE_ñ_URL'):
     if url:
         cmd.extend(['--url', url])
     cmd.extend([trace_dir, tmpdir])
-    return subprocess.run(cmd, env=upload_env)
+    result = subprocess.run(cmd, env=upload_env)
+    if delete_path:
+        os.remove(path)
+    return result
 
 def validate_dry_run(title="FAKE%20TITLE", url="FAKE_%C3%B1_URL"):
     with open('%s/dry-run.cmd'%tmpdir) as f:
@@ -245,7 +256,7 @@ testdir = "%s/pernosco-submit-test-hg"%tmpdir
 make_changes()
 build()
 record(clean_env)
-assert submit_dry_run().returncode == 0
+assert submit_dry_run(prefer_env_vars=False).returncode == 0
 validate_dry_run()
 validate_producer_metadata()
 validate_files_user()
