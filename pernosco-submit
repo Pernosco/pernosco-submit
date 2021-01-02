@@ -172,14 +172,23 @@ def check_trace():
             else:
                 print("Ignoring presence of sensitive environment variables. Values will be disclosed!", file=sys.stderr)
 
+# Given a complete source path and a complete destination path,
+# replaces the destination with a copy of the source.
+def copy_replace_file(src, dst):
+    try:
+        os.remove(dst)
+    except:
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        pass
+    shutil.copyfile(src, dst)
+
 def maybe_write_mozilla_metadata():
     for firefox_bin in glob.glob("%s/mmap_*_firefox*"%args.trace_dir):
         original_file_names = check_output(['rr', 'filename', firefox_bin])
         for name in original_file_names.splitlines():
             application_ini = b"%s/application.ini"%os.path.dirname(name)
             if os.path.isfile(application_ini):
-                os.makedirs("%s/files.mozilla"%args.trace_dir, exist_ok=True)
-                shutil.copyfile(application_ini, '%s/files.mozilla/application.ini'%args.trace_dir)
+                copy_replace_file(application_ini, '%s/files.mozilla/application.ini'%args.trace_dir)
                 return
 
 def write_metadata(pernosco_user, pernosco_group):
@@ -205,9 +214,8 @@ def package_libthread_db():
     for f in ['/usr/lib64/libthread_db.so',
               '/usr/lib/x86_64-linux-gnu/libthread_db.so']:
         if os.path.isfile(f):
-            os.makedirs('%s/files.system-debuginfo'%args.trace_dir, exist_ok=True)
             print("Copying %s into trace..."%f)
-            shutil.copyfile(f, '%s/files.system-debuginfo/libthread_db.so'%args.trace_dir)
+            copy_replace_file(f, '%s/files.system-debuginfo/libthread_db.so'%args.trace_dir)
             break
 
 def package_extra_rr_trace_files():
@@ -225,7 +233,7 @@ def package_extra_rr_trace_files():
             src_name = os.path.join(d, f)
             dest_name = os.path.join(args.trace_dir.encode('utf-8'), f)
             if os.path.isfile(src_name):
-                shutil.copyfile(src_name, dest_name)
+                copy_replace_file(src_name, dest_name)
             else:
                 shutil.copytree(src_name, dest_name)
 
@@ -447,15 +455,6 @@ def allowed_file(source_dirs, file):
             return True
     return False
 
-def mkdir_p(path):
-    try:
-        os.makedirs(path)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise
-
 def run_rr_sources(comp_dir_substitutions, cmd, params):
     print("Obtaining source file list...")
     rr_comp_dir_substitutions = []
@@ -480,7 +479,7 @@ def package_source_files_extra(source_dirs, comp_dir_substitutions):
     rr_output = run_rr_sources(comp_dir_substitutions, 'explicit-sources', args.binaries)
     tag = "extra.%s"%(hex(random.randrange(pow(2,64)))[2:])
     output_dir = "%s/extra_rr_trace_files"%args.output_dir
-    mkdir_p("%s/files.%s"%(output_dir, tag))
+    os.makedirs("%s/files.%s"%(output_dir, tag), exist_ok=True)
     return package_source_files_from_rr_output(source_dirs, rr_output, comp_dir_substitutions, output_dir, tag, "buildid", build_dir=args.build_dir)
 
 def package_source_files_from_rr_output(source_dirs, rr_output, comp_dir_substitutions, output_dir, tag, condition_type, build_dir=None):
@@ -488,18 +487,16 @@ def package_source_files_from_rr_output(source_dirs, rr_output, comp_dir_substit
 
     if 'dwos' in rr_sources:
         dir = "%s/debug/.dwo/"%output_dir
-        mkdir_p(dir)
         for e in rr_sources['dwos']:
             path = os.path.join(e['comp_dir'], e['name'])
             dst = "{0:s}/{1:0{2}x}.dwo".format(dir, e['id'], 16)
-            shutil.copy(path, dst)
+            copy_replace_file(path, dst)
 
     # Copy external debuginfo into place
     if 'external_debug_info' in rr_sources:
         for e in rr_sources['external_debug_info']:
             build_id = e['build_id']
             dir = "%s/debug/.build-id/%s"%(output_dir, build_id[:2])
-            mkdir_p(dir)
             t = e['type']
             if t == 'debuglink':
                 ext = "debug"
@@ -509,7 +506,7 @@ def package_source_files_from_rr_output(source_dirs, rr_output, comp_dir_substit
                 print("Unknown type '%s' from 'rr sources': is this script out of date? Aborting.", file=sys.stderr)
                 sys.exit(1)
             dst = "%s/%s.%s"%(dir, build_id[2:], ext)
-            shutil.copy(e['path'], dst)
+            copy_replace_file(e['path'], dst)
 
     out_sources = {};
     out_placeholders = {};
@@ -605,13 +602,12 @@ def package_gdbinit(repo_paths, out_dir):
             path = os.path.join(repo, g)
             out_path = "%s/%s/%s"%(out_dir, sub_path, g)
             if os.path.isfile(path):
-                os.makedirs(os.path.dirname(out_path), exist_ok=True)
                 print("Copying file %s into trace"%path)
-                shutil.copy(path, out_path)
+                copy_replace_file(path, out_path)
             elif os.path.isdir(path):
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
                 print("Copying tree %s into trace"%path)
-                shutil.copytree(path, out_path, copy_function=shutil.copy)
+                shutil.copytree(path, out_path, copy_function=shutil.copyfile)
         # Install our own Pernosco-compatible .gdbinit for Chromium
         if os.path.isfile("%s/%s/tools/gdb/gdb_chrome.py"%(out_dir, sub_path)):
             with open("%s/%s/.gdbinit"%(out_dir, sub_path), "wt") as f:
