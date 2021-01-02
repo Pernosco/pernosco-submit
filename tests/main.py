@@ -128,7 +128,6 @@ def validate_sources_user(repo_url, repo_url_suffix):
     with open('%s/sources.user'%trace_dir) as f:
         files_user = json.loads(f.read())
     or_condition = files_user[0]['condition']['or']
-    assert len(or_condition) == 2
     assert any(map(lambda x: x['binary'].endswith('librrpreload.so'), or_condition))
     assert any(map(lambda x: x['binary'].endswith('main'), or_condition))
     files = files_user[0]['files']
@@ -140,7 +139,6 @@ def validate_sources_user(repo_url, repo_url_suffix):
     assert files_user[0]['relevance'] == 'Relevant'
 
     or_condition = files_user[1]['condition']['or']
-    assert len(or_condition) == 2
     assert any(map(lambda x: x['binary'].endswith('librrpreload.so'), or_condition))
     assert any(map(lambda x: x['binary'].endswith('main'), or_condition))
     files = files_user[1]['files']
@@ -198,10 +196,12 @@ def validate_libthread_db():
 
 def validate_external_debuginfo():
     debug_roots = list(os.listdir('%s/debug/.build-id'%trace_dir))
-    assert len(debug_roots) == 1
-    debugs = list(os.listdir('%s/debug/.build-id/%s'%(trace_dir, debug_roots[0])))
-    assert len(debugs) == 1
-    assert debugs[0].endswith(".debug")
+    assert len(debug_roots) > 0
+    for d in debug_roots:
+        debugs = list(os.listdir('%s/debug/.build-id/%s'%(trace_dir, d)))
+        assert len(debugs) > 0
+        for dd in debugs:
+            assert dd.endswith(".debug") or dd.endswith(".sup")
 
 def validate_dwos():
     dwos = list(os.listdir('%s/debug/.dwo'%trace_dir))
