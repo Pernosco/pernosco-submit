@@ -5,6 +5,7 @@ import base64
 import errno
 import glob
 import hashlib
+import io
 import json
 import os
 import random
@@ -43,7 +44,7 @@ upload_package_subparser = arg_subparsers.add_parser("upload-package", help="Upl
 upload_package_subparser.add_argument("--title", help="Display the given name in the Pernosco UI and tab title")
 upload_package_subparser.add_argument("--url", help="Make the name a link to the given URL")
 upload_package_subparser.add_argument("--consent-to-current-privacy-policy", action='store_true', help="Unconditionally consent to the current privacy policy")
-upload_package_subparser.add_argument("package")
+upload_package_subparser.add_argument("package", help="Name of the package file produced by `pernosco-submit upload --dry-run'")
 
 analyze_build_subparser = arg_subparsers.add_parser("analyze-build", help="Create extra-rr-trace-files/ containing source file metadata obtained by scanning built binaries and source file repositories")
 analyze_build_subparser.add_argument("--build-dir", help="Specify build directory to use as base for relative DW_AT_comp_dir")
@@ -718,6 +719,21 @@ def get_metadata_for_upload(public_key, signature, pernosco_user, pernosco_group
         metadata += ",%s"%os.environ['PERNOSCO_EXTRA_METADATA']
     return metadata
 
+def append_crypto_data_to_package(package_file_name, crypto_data):
+    """
+    Append cryptographic data required to upload the package at a later time
+    to the package.
+
+        Parameters:
+            package_file_name (str): Name of the package file to be uploaded later
+            crypto_data (dict): Cryptographic data required to upload the package
+    """
+    print("Appending cryptographic data required for upload to %s"%package_file_name)
+    crypto_data_json = json.dumps(crypto_data)
+    with open(package_file_name, "a") as package_file:
+        print("%s"%crypto_data_json, file=package_file)
+        print("%d"%len(crypto_data_json), end="", file=package_file)
+
 def upload_file(nonce, signature, aws_access_key_id, aws_secret_access_key, public_key, pernosco_user, pernosco_group, metadata, payload_file_name):
     """
     Upload the specified payload file to Pernosco.
@@ -756,12 +772,12 @@ def upload_file(nonce, signature, aws_access_key_id, aws_secret_access_key, publ
         with open("%s.cmd"%args.dry_run, "w") as cmd:
             print(json.dumps(cmd_obj), file=cmd)
 
-        # Create a file containing cryptographic data required to upload the
-        # package at a later time.
-        with open("%s.crypto"%args.dry_run, "w") as crypto:
-            print("%s\n"%(public_key.strip()), file=crypto)
-            print("%s\n"%(signature.strip()), file=crypto)
-            print("%s\n"%(nonce.strip()), file=crypto)
+        crypto_data = {
+            'public_key': public_key.strip(),
+            'signature': signature.strip(),
+            'nonce': nonce.strip()
+        }
+        append_crypto_data_to_package(args.dry_run, crypto_data)
     else:
         # Check our credentials before proceeding further.
         p3 = Popen(checker_args, env=aws_env, stdout=subprocess.PIPE)
@@ -769,21 +785,6 @@ def upload_file(nonce, signature, aws_access_key_id, aws_secret_access_key, publ
         if check_result.find("Unhandled") != -1:
             raise CustomException("Your upload credentials are not valid. Check them and try again.")
         check_call(aws_cmd, env=aws_env)
-
-def upload_payload_file(pernosco_user, pernosco_group, pernosco_user_secret_key, payload_file):
-    """
-    Create a package and upload it to Pernosco.
-
-        Parameters:
-            pernosco_user (str): Pernosco user
-            pernosco_group (str): Pernosco group
-            pernosco_user_secret_key (str): Secret credentials required for Pernosco
-            payload_file (file object): File object for the package to be created
-    """
-    [aws_access_key_id, aws_secret_access_key, pernosco_secret_key] = pernosco_user_secret_key.split(',')
-    (public_key, signature, nonce) = prepare_upload_data(payload_file, pernosco_secret_key)
-    metadata = get_metadata_for_upload(public_key, signature, pernosco_user, pernosco_group)
-    upload_file(nonce, signature, aws_access_key_id, aws_secret_access_key, public_key, pernosco_user, pernosco_group, metadata, payload_file.name)
 
 def upload(pernosco_user, pernosco_group, pernosco_user_secret_key):
     """
@@ -796,40 +797,65 @@ def upload(pernosco_user, pernosco_group, pernosco_user_secret_key):
     """
     with tempfile.NamedTemporaryFile(mode="w+b") as payload_file:
         print("Compressing to %s..."%payload_file.name)
-        upload_payload_file(pernosco_user, pernosco_group, pernosco_user_secret_key, payload_file)
+        [aws_access_key_id, aws_secret_access_key, pernosco_secret_key] = pernosco_user_secret_key.split(',')
+        (public_key, signature, nonce) = prepare_upload_data(payload_file, pernosco_secret_key)
+        metadata = get_metadata_for_upload(public_key, signature, pernosco_user, pernosco_group)
+        upload_file(nonce, signature, aws_access_key_id, aws_secret_access_key, public_key, pernosco_user, pernosco_group, metadata, payload_file.name)
 
-def get_crypto_data_for_package(package_file_name):
+def extract_crypto_data_from_package(package_file_name):
     """
-    Return the persisted cryptographic data required to upload the specified package file.
+    Extract the persisted cryptographic data required to upload the specified package file
+    from said package file.
+    NOTE: This alters the package file by removing the extracted cryptographic data.
 
         Parameters:
             package_file_name (str): Name of the package file to be uploaded to Pernosco
 
         Returns:
-            A tuple of cryptographic data required for uploading specified package: (public_key, signature, nonce)
+            crypto_data (dict): Cryptographic data required for uploading specified package
     """
-    public_key = None
-    signature = None
-    nonce = None
-    with open("%s.crypto"%package_file_name, "r") as crypto_file:
-        public_key = ""
-        is_reading_public_key = True
-        while is_reading_public_key:
-            current_line = crypto_file.readline()
-            public_key += current_line
-            if "END PUBLIC KEY" in current_line:
-                is_reading_public_key = False
+    print("Extracting cryptographic data required for upload from %s"%package_file_name)
 
-        # Skip empty newline.
-        crypto_file.readline()
+    # First, get the length of the cryptographic data JSON string from the end
+    # of the file.
+    crypto_file = open(package_file_name, "r+")
+    crypto_file.seek(0, io.SEEK_END)
 
-        signature = crypto_file.readline()
+    is_reading_json_len = True
+    offset = crypto_file.tell() - 1
+    json_len_str = ""
+    while is_reading_json_len:
+        crypto_file.seek(offset, io.SEEK_SET)
+        byte = crypto_file.read(1)
+        if byte == "\n":
+            is_reading_json_len = False
+        else:
+            json_len_str += byte
+            offset -= 1
 
-        # Skip empty newline.
-        crypto_file.readline()
+    # Reverse the length string since it was read backwards from the end of the fle.
+    json_len_str= json_len_str[::-1]
+    json_len = int(json_len_str)
 
-        nonce = crypto_file.readline()
-    return (public_key, signature, nonce)
+    # Second, truncate the file so that the JSON string length is removed.
+    crypto_file.seek(offset, io.SEEK_SET)
+    crypto_file.truncate()
+    crypto_file.close()
+
+    # Third, parse the cryptographic data JSON string from the end of the file.
+    crypto_file = open(package_file_name, "r+")
+    crypto_file.seek(0, io.SEEK_END)
+    crypto_file.seek(crypto_file.tell() - json_len, io.SEEK_SET)
+    crypto_data = json.load(crypto_file)
+
+    # Finally, truncate the file so that the cryptographic data JSON string is
+    # removed.
+    crypto_file.seek(0, io.SEEK_END)
+    crypto_file.seek(crypto_file.tell() - json_len, io.SEEK_SET)
+    crypto_file.truncate()
+    crypto_file.close()
+
+    return crypto_data
 
 def upload_package(pernosco_user, pernosco_group, pernosco_user_secret_key, package_file_name):
     """
@@ -841,10 +867,21 @@ def upload_package(pernosco_user, pernosco_group, pernosco_user_secret_key, pack
             pernosco_user_secret_key (str): Secret credentials required for Pernosco
             package_file_name (str): Name of the package file to be uploaded to Pernosco
     """
-    (public_key, signature, nonce) = get_crypto_data_for_package(package_file_name)
+    # Extract cryptographic data required to upload the package from the
+    # package file; remove said cryptographic data from the package in order to
+    # make the package valid for an upload.
+    crypto_data = extract_crypto_data_from_package(package_file_name)
+    (public_key, signature, nonce) = crypto_data["public_key"], crypto_data["signature"], crypto_data["nonce"]
+
     metadata = get_metadata_for_upload(public_key, signature, pernosco_user, pernosco_group)
     [aws_access_key_id, aws_secret_access_key, pernosco_secret_key] = pernosco_user_secret_key.split(',')
-    upload_file(nonce, signature, aws_access_key_id, aws_secret_access_key, public_key, pernosco_user, pernosco_group, metadata, package_file_name)
+
+    try:
+        upload_file(nonce, signature, aws_access_key_id, aws_secret_access_key, public_key, pernosco_user, pernosco_group, metadata, package_file_name)
+    finally:
+        # Add the cryptographic data required to upload the package back into the
+        # package file.
+        append_crypto_data_to_package(package_file_name, crypto_data)
 
 def keygen_cmd():
     check_executable('openssl', 'openssl')
