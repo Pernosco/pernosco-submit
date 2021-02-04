@@ -731,7 +731,7 @@ def append_crypto_data_to_package(package_file_name, crypto_data):
     print("Appending cryptographic data required for upload to %s"%package_file_name)
     crypto_data_json = json.dumps(crypto_data)
     with open(package_file_name, "a") as package_file:
-        print("%s"%crypto_data_json, file=package_file)
+        print(crypto_data_json, file=package_file)
         print("%d"%len(crypto_data_json), end="", file=package_file)
 
 def upload_file(nonce, signature, aws_access_key_id, aws_secret_access_key, public_key, pernosco_user, pernosco_group, metadata, payload_file_name):
@@ -837,22 +837,23 @@ def extract_crypto_data_from_package(package_file_name):
     json_len_str= json_len_str[::-1]
     json_len = int(json_len_str)
 
-    # Second, truncate the file so that the JSON string length is removed.
+    # `offset` is currently at the '\n' following the crytpographic data JSON string.
+    # Update it so that it's at the beginning of the JSON string.
+    offset -= json_len
+
+    # Second, read the cryptographic data JSON string.
     crypto_file.seek(offset, io.SEEK_SET)
-    crypto_file.truncate()
-    crypto_file.close()
+    crypto_data_str = crypto_file.readline()
+    crypto_data = json.loads(crypto_data_str)
 
-    # Third, parse the cryptographic data JSON string from the end of the file.
-    crypto_file = open(package_file_name, "r+")
-    crypto_file.seek(0, io.SEEK_END)
-    crypto_file.seek(crypto_file.tell() - json_len, io.SEEK_SET)
-    crypto_data = json.load(crypto_file)
+    # Third, truncate the file to restore the original package file without any
+    # cryptographic data appended to the end.
 
-    # Finally, truncate the file so that the cryptographic data JSON string is
-    # removed.
-    crypto_file.seek(0, io.SEEK_END)
-    crypto_file.seek(crypto_file.tell() - json_len, io.SEEK_SET)
-    crypto_file.truncate()
+    # Since `offset` is the byte index of the cryptographic data's beginning,
+    # it is also the size of the original package file without the
+    # cryptographic data.
+    original_package_len = offset
+    crypto_file.truncate(original_package_len)
     crypto_file.close()
 
     return crypto_data
