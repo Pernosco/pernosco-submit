@@ -5,6 +5,7 @@ import base64
 import errno
 import glob
 import hashlib
+import io
 import json
 import os
 import random
@@ -38,6 +39,12 @@ upload_subparser.add_argument("--substitute", metavar='LIB_PATH=WITH_PATH', acti
 upload_subparser.add_argument("--dry-run", metavar="PATH", help="Instead of uploading the package, copies it to the given path. Also writes the command/env to <path>.cmd.")
 upload_subparser.add_argument("trace_dir")
 upload_subparser.add_argument("source_dirs", nargs="*")
+
+upload_package_subparser = arg_subparsers.add_parser("upload-package", help="Upload a package created using `pernosco-submit upload --dry-run' to Pernosco")
+upload_package_subparser.add_argument("--title", help="Display the given name in the Pernosco UI and tab title")
+upload_package_subparser.add_argument("--url", help="Make the name a link to the given URL")
+upload_package_subparser.add_argument("--consent-to-current-privacy-policy", action='store_true', help="Unconditionally consent to the current privacy policy")
+upload_package_subparser.add_argument("package", help="Name of the package file produced by `pernosco-submit upload --dry-run'")
 
 analyze_build_subparser = arg_subparsers.add_parser("analyze-build", help="Create extra-rr-trace-files/ containing source file metadata obtained by scanning built binaries and source file repositories")
 analyze_build_subparser.add_argument("--build-dir", help="Specify build directory to use as base for relative DW_AT_comp_dir")
@@ -629,76 +636,253 @@ end
                 print("directory /trace/gdbinit/%s"%sub_path, file=f)
                 print("source /trace/gdbinit/%s/.gdbinit"%sub_path, file=f)
 
+def prepare_upload_data(payload_file, pernosco_secret_key):
+    """
+    Create a package for uploading and return cryptographic data required to
+    upload said package.
+
+        Parameters:
+            pernosco_secret_key (str): Pernosco secret key
+            payload_file (file object): Package file to be created
+
+        Return:
+            A tuple of cryptographic data required for uploading newly created package: (public_key, signature, nonce)
+    """
+    with tempfile.TemporaryFile(mode="w+t", encoding='utf-8') as key_file:
+        print("-----BEGIN EC PRIVATE KEY-----\n%s\n-----END EC PRIVATE KEY-----"%pernosco_secret_key, file=key_file)
+        key_file.seek(0)
+        public_key = check_output(['openssl', 'ec', '-pubout'], stdin=key_file, stderr=subprocess.DEVNULL).decode('utf-8')
+        p0 = Popen(["tar", "-I", "zstdmt", "--exclude", "./db*", "-cf", "-", "."], cwd=args.trace_dir, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        p1 = Popen(["tee", payload_file.name], stdin=p0.stdout, stdout=subprocess.PIPE)
+        p0.stdout.close()
+        os.set_inheritable(key_file.fileno(), True)
+        p2 = Popen(["openssl", "dgst", "-sha256", "-sign", "/proc/self/fd/%d"%key_file.fileno()], close_fds=False, stdin=p1.stdout, stdout=subprocess.PIPE)
+        p1.stdout.close()
+        (sig, err) = p2.communicate()
+    if err:
+        raise CustomException("openssl failed: %s"%err)
+    p0.wait()
+    p1.wait()
+    if p0.returncode != 0:
+        raise CustomException("tar failed: %d"%p0.returncode)
+    if p1.returncode != 0:
+        raise CustomException("tee failed: %d"%p1.returncode)
+    signature = base64.urlsafe_b64encode(sig).decode('utf-8')
+    # Create a nonce that's 64 bits of the SHA256 of the signature.
+    hasher = hashlib.sha256()
+    hasher.update(sig)
+    # Strip '=' because it requires %-encoding in URLs
+    nonce = base64.urlsafe_b64encode(hasher.digest()[:8]).decode('utf-8').rstrip('=')
+    return (public_key, signature, nonce)
+
+def get_aws_environment(aws_access_key_id, aws_secret_access_key):
+    """
+    Return a dictionary with current environment variables plus AWS access
+    credentials.
+
+        Parameters:
+            aws_access_key_id (str): AWS access key ID
+            aws_secret_access_key (str): AWS secret access key
+
+        Returns:
+            Dictionary with current environment variables plus AWS access
+            credentials.
+    """
+    aws_env = dict(os.environ,
+        AWS_DEFAULT_REGION='us-east-2',
+        AWS_ACCESS_KEY_ID=aws_access_key_id,
+        AWS_SECRET_ACCESS_KEY=aws_secret_access_key)
+    return aws_env
+
+def get_metadata_for_upload(public_key, signature, pernosco_user, pernosco_group):
+    """
+    Return metadata required for uploading a package to Pernosco.
+
+        Parameters:
+            public_key (str): Public key for Pernosco user
+            signature (str): Message digest for the package to be uploaded
+            pernosco_user (str): Pernosco user
+            pernosco_group (str): Pernosco group
+
+        Returns:
+            metadata (str): A string of comma-separated metadata values
+    """
+    # Send the public key with the signature so the server can easily
+    # determine which key was used and check that the key is authorized
+    metadata = "publickey=%s,signature=%s,user=%s,group=%s"%(strip_wrapper(public_key), signature, pernosco_user, pernosco_group)
+    if args.title != None:
+        metadata += ",title=%s"%urllib.parse.quote(args.title)
+    if args.url != None:
+        metadata += ",url=%s"%urllib.parse.quote(args.url)
+
+    if 'PERNOSCO_EXTRA_METADATA' in os.environ:
+        metadata += ",%s"%os.environ['PERNOSCO_EXTRA_METADATA']
+    return metadata
+
+def append_crypto_data_to_package(package_file_name, crypto_data):
+    """
+    Append cryptographic data required to upload the package at a later time
+    to the package.
+
+        Parameters:
+            package_file_name (str): Name of the package file to be uploaded later
+            crypto_data (dict): Cryptographic data required to upload the package
+    """
+    print("Appending cryptographic data required for upload to %s"%package_file_name)
+    crypto_data_json = json.dumps(crypto_data)
+    with open(package_file_name, "a") as package_file:
+        print(crypto_data_json, file=package_file)
+        print("%d"%len(crypto_data_json), end="", file=package_file)
+
+def upload_file(nonce, signature, aws_access_key_id, aws_secret_access_key, public_key, pernosco_user, pernosco_group, metadata, payload_file_name):
+    """
+    Upload the specified payload file to Pernosco.
+
+        Parameters:
+            nonce (str): Nonce for uploaded file name
+            signature (str): Message digest for the package to be uploaded
+            aws_access_key_id (str): AWS access key ID
+            aws_secret_access_key (str): AWS secret access key
+            public_key (str): Public key for Pernosco user
+            pernosco_user (str): Pernosco user
+            pernosco_group (str): Pernosco group
+            metadata (str): Metadata required for the uplaod
+            payload_file_name (str): File to be uploaded
+    """
+    s3_url = "s3://pernosco-upload/%s.tar.zst"%nonce
+    really = ''
+    if args.subcommand == 'upload' and args.dry_run:
+        really = " (not really)"
+    print("Uploading %d bytes to %s...%s"%(os.path.getsize(payload_file_name), s3_url, really))
+
+    aws_env = get_aws_environment(aws_access_key_id, aws_secret_access_key)
+
+    checker_args = ["aws", "lambda", "invoke", "--function-name", "upload-credential-check", "--qualifier"]
+    if 'PERNOSCO_CREDENTIAL_CHECKER' in os.environ:
+        checker_args.extend([os.environ['PERNOSCO_CREDENTIAL_CHECKER']])
+    else:
+        checker_args.extend(["PROD"])
+    checker_args.extend(["--payload", "\"publickey=%s,user=%s,group=%s\""%(strip_wrapper(public_key), pernosco_user, pernosco_group), "/dev/null"])
+
+    aws_cmd = ["aws", "s3", "cp", "--metadata", metadata, payload_file_name, s3_url]
+
+    if args.subcommand == 'upload' and args.dry_run:
+        check_call(["cp", payload_file_name, args.dry_run])
+        cmd_obj = dict(checker_cmd=checker_args, aws_cmd=aws_cmd, aws_env=aws_env)
+        with open("%s.cmd"%args.dry_run, "w") as cmd:
+            print(json.dumps(cmd_obj), file=cmd)
+
+        crypto_data = {
+            'public_key': public_key.strip(),
+            'signature': signature.strip(),
+            'nonce': nonce.strip()
+        }
+        append_crypto_data_to_package(args.dry_run, crypto_data)
+    else:
+        # Check our credentials before proceeding further.
+        p3 = Popen(checker_args, env=aws_env, stdout=subprocess.PIPE)
+        check_result = p3.communicate()[0].decode("utf-8")
+        if check_result.find("Unhandled") != -1:
+            raise CustomException("Your upload credentials are not valid. Check them and try again.")
+        check_call(aws_cmd, env=aws_env)
+
 def upload(pernosco_user, pernosco_group, pernosco_user_secret_key):
-    [aws_access_key_id, aws_secret_access_key, pernosco_secret_key] = pernosco_user_secret_key.split(',')
+    """
+    Upload a trace to Pernosco.
+
+        Parameters:
+            pernosco_user (str): Pernosco user
+            pernosco_group (str): Pernosco group
+            pernosco_user_secret_key (str): Secret credentials required for Pernosco
+    """
     with tempfile.NamedTemporaryFile(mode="w+b") as payload_file:
         print("Compressing to %s..."%payload_file.name)
-        with tempfile.TemporaryFile(mode="w+t", encoding='utf-8') as key_file:
-            print("-----BEGIN EC PRIVATE KEY-----\n%s\n-----END EC PRIVATE KEY-----"%pernosco_secret_key, file=key_file)
-            key_file.seek(0)
-            public_key = check_output(['openssl', 'ec', '-pubout'], stdin=key_file, stderr=subprocess.DEVNULL).decode('utf-8')
-            p0 = Popen(["tar", "-I", "zstdmt", "--exclude", "./db*", "-cf", "-", "."], cwd=args.trace_dir, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-            p1 = Popen(["tee", payload_file.name], stdin=p0.stdout, stdout=subprocess.PIPE)
-            p0.stdout.close()
-            os.set_inheritable(key_file.fileno(), True)
-            p2 = Popen(["openssl", "dgst", "-sha256", "-sign", "/proc/self/fd/%d"%key_file.fileno()], close_fds=False, stdin=p1.stdout, stdout=subprocess.PIPE)
-            p1.stdout.close()
-            (sig, err) = p2.communicate()
-        if err:
-            raise CustomException("openssl failed: %s"%err)
-        p0.wait()
-        p1.wait()
-        if p0.returncode != 0:
-            raise CustomException("tar failed: %d"%p0.returncode)
-        if p1.returncode != 0:
-            raise CustomException("tee failed: %d"%p1.returncode)
-        signature = base64.urlsafe_b64encode(sig).decode('utf-8')
-        # Create a nonce that's 64 bits of the SHA256 of the signature.
-        hasher = hashlib.sha256()
-        hasher.update(sig)
-        # Strip '=' because it requires %-encoding in URLs
-        nonce = base64.urlsafe_b64encode(hasher.digest()[:8]).decode('utf-8').rstrip('=')
-        s3_url = "s3://pernosco-upload/%s.tar.zst"%nonce
-        really = ''
-        if args.dry_run:
-              really = " (not really)"
-        print("Uploading %d bytes to %s...%s"%(os.path.getsize(payload_file.name), s3_url, really))
-        aws_env = dict(os.environ,
-            AWS_DEFAULT_REGION='us-east-2',
-            AWS_ACCESS_KEY_ID=aws_access_key_id,
-            AWS_SECRET_ACCESS_KEY=aws_secret_access_key)
+        [aws_access_key_id, aws_secret_access_key, pernosco_secret_key] = pernosco_user_secret_key.split(',')
+        (public_key, signature, nonce) = prepare_upload_data(payload_file, pernosco_secret_key)
+        metadata = get_metadata_for_upload(public_key, signature, pernosco_user, pernosco_group)
+        upload_file(nonce, signature, aws_access_key_id, aws_secret_access_key, public_key, pernosco_user, pernosco_group, metadata, payload_file.name)
 
-        checker_args = ["aws", "lambda", "invoke", "--function-name", "upload-credential-check", "--qualifier"]
-        if 'PERNOSCO_CREDENTIAL_CHECKER' in os.environ:
-            checker_args.extend([os.environ['PERNOSCO_CREDENTIAL_CHECKER']])
+def extract_crypto_data_from_package(package_file_name):
+    """
+    Extract the persisted cryptographic data required to upload the specified package file
+    from said package file.
+    NOTE: This alters the package file by removing the extracted cryptographic data.
+
+        Parameters:
+            package_file_name (str): Name of the package file to be uploaded to Pernosco
+
+        Returns:
+            crypto_data (dict): Cryptographic data required for uploading specified package
+    """
+    print("Extracting cryptographic data required for upload from %s"%package_file_name)
+
+    # First, get the length of the cryptographic data JSON string from the end
+    # of the file.
+    crypto_file = open(package_file_name, "r+")
+    crypto_file.seek(0, io.SEEK_END)
+
+    is_reading_json_len = True
+    offset = crypto_file.tell() - 1
+    json_len_str = ""
+    while is_reading_json_len:
+        crypto_file.seek(offset, io.SEEK_SET)
+        byte = crypto_file.read(1)
+        if byte == "\n":
+            is_reading_json_len = False
         else:
-            checker_args.extend(["PROD"])
-        checker_args.extend(["--payload", "\"publickey=%s,user=%s,group=%s\""%(strip_wrapper(public_key), pernosco_user, pernosco_group), "/dev/null"])
+            json_len_str += byte
+            offset -= 1
 
-        # Send the public key with the signature so the server can easily
-        # determine which key was used and check that the key is authorized
-        metadata = "publickey=%s,signature=%s,user=%s,group=%s"%(strip_wrapper(public_key), signature, pernosco_user, pernosco_group)
-        if args.title != None:
-            metadata += ",title=%s"%urllib.parse.quote(args.title)
-        if args.url != None:
-            metadata += ",url=%s"%urllib.parse.quote(args.url)
+    # Reverse the length string since it was read backwards from the end of the fle.
+    json_len_str= json_len_str[::-1]
+    json_len = int(json_len_str)
 
-        if 'PERNOSCO_EXTRA_METADATA' in os.environ:
-            metadata += ",%s"%os.environ['PERNOSCO_EXTRA_METADATA']
-        aws_cmd = ["aws", "s3", "cp", "--metadata", metadata, payload_file.name, s3_url]
+    # `offset` is currently at the '\n' following the crytpographic data JSON string.
+    # Update it so that it's at the beginning of the JSON string.
+    offset -= json_len
 
-        if args.dry_run:
-            check_call(["cp", payload_file.name, args.dry_run])
-            cmd_obj = dict(checker_cmd=checker_args, aws_cmd=aws_cmd, aws_env=aws_env)
-            with open("%s.cmd"%args.dry_run, "w") as cmd:
-                print(json.dumps(cmd_obj), file=cmd)
-        else:
-            # Check our credentials before proceeding further.
-            p3 = Popen(checker_args, env=aws_env, stdout=subprocess.PIPE)
-            check_result = p3.communicate()[0].decode("utf-8")
-            if check_result.find("Unhandled") != -1:
-                raise CustomException("Your upload credentials are not valid. Check them and try again.")
-            check_call(aws_cmd, env=aws_env)
+    # Second, read the cryptographic data JSON string.
+    crypto_file.seek(offset, io.SEEK_SET)
+    crypto_data_str = crypto_file.readline()
+    crypto_data = json.loads(crypto_data_str)
+
+    # Third, truncate the file to restore the original package file without any
+    # cryptographic data appended to the end.
+
+    # Since `offset` is the byte index of the cryptographic data's beginning,
+    # it is also the size of the original package file without the
+    # cryptographic data.
+    original_package_len = offset
+    crypto_file.truncate(original_package_len)
+    crypto_file.close()
+
+    return crypto_data
+
+def upload_package(pernosco_user, pernosco_group, pernosco_user_secret_key, package_file_name):
+    """
+    Upload the specified package file to Pernosco.
+
+        Parameters:
+            pernosco_user (str): Pernosco user
+            pernosco_group (str): Pernosco group
+            pernosco_user_secret_key (str): Secret credentials required for Pernosco
+            package_file_name (str): Name of the package file to be uploaded to Pernosco
+    """
+    # Extract cryptographic data required to upload the package from the
+    # package file; remove said cryptographic data from the package in order to
+    # make the package valid for an upload.
+    crypto_data = extract_crypto_data_from_package(package_file_name)
+    (public_key, signature, nonce) = crypto_data["public_key"], crypto_data["signature"], crypto_data["nonce"]
+
+    metadata = get_metadata_for_upload(public_key, signature, pernosco_user, pernosco_group)
+    [aws_access_key_id, aws_secret_access_key, pernosco_secret_key] = pernosco_user_secret_key.split(',')
+
+    try:
+        upload_file(nonce, signature, aws_access_key_id, aws_secret_access_key, public_key, pernosco_user, pernosco_group, metadata, package_file_name)
+    finally:
+        # Add the cryptographic data required to upload the package back into the
+        # package file.
+        append_crypto_data_to_package(package_file_name, crypto_data)
 
 def keygen_cmd():
     check_executable('openssl', 'openssl')
@@ -756,17 +940,20 @@ def get_config_var(name):
     print("Can't find %s or ~/.config/pernosco/%s"%(env_var, name), file=sys.stderr)
     sys.exit(1)
 
-def upload_cmd():
-    check_upload_analyze_requirements()
+def check_for_aws_command():
+    """
+    Check that the `aws' command-line tools are installed.
+    """
     if not shutil.which('aws'):
         print("Please install the AWS command-line tools using", file=sys.stderr)
         print("  sudo pip3 install awscli --upgrade", file=sys.stderr)
         print("(Distribution packages may fail due to https://github.com/aws/aws-cli/issues/2403.)", file=sys.stderr)
         sys.exit(1)
 
-    if args.ignore_warnings:
-        print("Ignoring the automated trace check (not recommended!)", file=sys.stderr)
-
+def check_title_and_url_args():
+    """
+    Check that --title and --url command-line arguments are valid.
+    """
     if args.title:
         if len(args.title.encode('utf-8')) > 100:
             print("Title must have max 100 UTF-8 bytes", file=sys.stderr)
@@ -775,6 +962,16 @@ def upload_cmd():
         if len(args.url.encode('utf-8')) > 1000:
             print("Url must have max 1000 UTF-8 bytes", file=sys.stderr)
             exit(1)
+
+def upload_cmd():
+    check_upload_analyze_requirements()
+    check_for_aws_command()
+
+    if args.ignore_warnings:
+        print("Ignoring the automated trace check (not recommended!)", file=sys.stderr)
+
+    check_title_and_url_args()
+
     if not os.path.isfile("%s/version"%args.trace_dir):
         print("Can't find rr trace in %s"%args.trace_dir, file=sys.stderr)
         sys.exit(1)
@@ -795,6 +992,22 @@ def upload_cmd():
     package_gdbinit(repo_paths, "%s/gdbinit"%args.trace_dir)
     upload(pernosco_user, pernosco_group, pernosco_user_secret_key)
 
+def upload_package_cmd():
+    """
+    Upload a package created using `pernosco-submit upload --dry-run' to Pernosco.
+    """
+    check_for_aws_command()
+    check_title_and_url_args()
+    check_privacy_policy_consent()
+
+    pernosco_user = get_config_var('user')
+    pernosco_group = get_config_var('group')
+    pernosco_user_secret_key = get_config_var('user_secret_key')
+
+    package_file_name = args.package
+
+    upload_package(pernosco_user, pernosco_group, pernosco_user_secret_key, package_file_name)
+
 def analyze_build_cmd():
     check_upload_analyze_requirements()
 
@@ -805,6 +1018,8 @@ def analyze_build_cmd():
 
 if args.subcommand == 'upload':
     upload_cmd()
+elif args.subcommand == 'upload-package':
+    upload_package_cmd()
 elif args.subcommand == 'keygen':
     keygen_cmd()
 elif args.subcommand == 'analyze-build':
