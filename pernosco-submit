@@ -547,7 +547,10 @@ def package_source_files_from_rr_output(source_dirs, rr_output, comp_dir_substit
     with zipfile.ZipFile('%s/files.%s/sources.zip'%(output_dir, tag), mode='w', compression=zipfile.ZIP_DEFLATED) as zip_file:
         for f in explicit_files:
             if allowed_file(source_dirs, f):
-                zip_file.write(f)
+                # Don't call zip_file.write(f) since that tries to preserve timestamps,
+                # which fails for timestamps before 1980
+                with open(f, "rb") as file:
+                    zip_file.writestr(f, file.read())
     disallowed_file_count = 0
     with zipfile.ZipFile('%s/files.%s/sources-placeholders.zip'%(output_dir, tag), mode='w', compression=zipfile.ZIP_DEFLATED) as zip_file:
         for f in explicit_files:
