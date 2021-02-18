@@ -183,8 +183,8 @@ def validate_sources_extra_zip(extra_part):
 
 def validate_sources_zip_path(path):
     sources_zip = zipfile.ZipFile(path)
-    sources_zip.getinfo('%s/out/message.h'%testdir[1:])
-    sources_zip.getinfo('%s/main.c'%testdir[1:])
+    sources_zip.getinfo('%s/out/message.h'%testdir)
+    sources_zip.getinfo('%s/main.c'%testdir)
     try:
         sources_zip.getinfo('usr/include/stdio.h')
         assert False
