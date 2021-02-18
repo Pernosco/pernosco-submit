@@ -136,15 +136,19 @@ def check_privacy_policy_consent():
 AVX512_CPUID_EXTENDED_FEATURES_EBX = 0xdc230000
 AVX512_CPUID_EXTENDED_FEATURES_ECX = 0x00002c42
 AVX512_CPUID_EXTENDED_FEATURES_EDX = 0x0000000c
+SHA_CPUID_EXTENDED_FEATURES_EBX = 0x20000000
 
-def has_avx512(cpuid_records):
+def has_banned(cpuid_records):
+    bans = []
     for r in cpuid_records:
         if r[0] == 7 and r[1] == 0:
             if ((r[3] & AVX512_CPUID_EXTENDED_FEATURES_EBX) != 0 or
                 (r[4] & AVX512_CPUID_EXTENDED_FEATURES_ECX) != 0 or
                 (r[5] & AVX512_CPUID_EXTENDED_FEATURES_EDX) != 0):
-               return True
-    return False
+                bans.append("AVX512");
+            if (r[3] & SHA_CPUID_EXTENDED_FEATURES_EBX) != 0:
+                bans.append("SHA extensions");
+    return bans
 
 SENSITIVE_ENV_VARS = {
     'PERNOSCO_USER_SECRET_KEY': True,
@@ -160,11 +164,16 @@ def check_trace():
     if not 'environ' in trace_info:
         print("rr is out of date. Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
         sys.exit(1)
-    if has_avx512(trace_info['cpuidRecords']) and not "PERNOSCO_TEST" in os.environ:
-        print("AVX512 enabled when recording trace, but Pernosco does not support AVX512 yet.", file=sys.stderr)
+    banned = has_banned(trace_info['cpuidRecords'])
+    if len(banned) > 0 and not "PERNOSCO_TEST" in os.environ:
+        if len(banned) > 1:
+            print("CPU features %s enabled when recording trace, but Pernosco does not support them yet."%(" and ".join(bans)), file=sys.stderr)
+        else:
+            print("CPU feature %s enabled when recording trace, but Pernosco does not support %s yet."%(bans[0], bans[0]), file=sys.stderr)
         if not args.ignore_warnings:
             print("Re-record with `rr record --disable-cpuid-features-ext 0x%x,0x%x,0x%x`."%(
-                AVX512_CPUID_EXTENDED_FEATURES_EBX, AVX512_CPUID_EXTENDED_FEATURES_ECX,
+                AVX512_CPUID_EXTENDED_FEATURES_EBX | SHA_CPUID_EXTENDED_FEATURES_EBX,
+                AVX512_CPUID_EXTENDED_FEATURES_ECX,
                 AVX512_CPUID_EXTENDED_FEATURES_EDX), file=sys.stderr)
             sys.exit(2)
         else:
