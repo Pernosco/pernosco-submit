@@ -5,6 +5,10 @@ import subprocess
 trace_dir = None
 echo_commands = False
 
+def maybe_echo(cmd):
+    if echo_commands:
+        print(" ".join(cmd), file=sys.stderr)
+
 # Given a complete source path and a complete destination path,
 # replaces the destination with a copy of the source.
 def copy_replace_file(src, dst):
@@ -19,6 +23,11 @@ def check_output(process_args, *proc_args, **kwargs):
     if echo_commands:
         print("Running %s"%(" ".join(process_args)))
     return subprocess.check_output(process_args, *proc_args, **kwargs)
+
+def call(process_args, *proc_args, **kwargs):
+    if echo_commands:
+        print("Running %s"%(" ".join(process_args)))
+    return subprocess.call(process_args, *proc_args, **kwargs)
 
 def check_call(process_args, *proc_args, **kwargs):
     if echo_commands:
