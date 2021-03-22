@@ -13,7 +13,10 @@ def package_libthread_db():
               '/usr/lib/x86_64-linux-gnu/libthread_db.so']:
         if os.path.isfile(f):
             print("Copying %s into trace..."%f)
-            base.copy_replace_file(f, '%s/files.system-debuginfo/libthread_db.so'%base.trace_dir)
+            dest = '%s/files.system-debuginfo/libthread_db.so'%base.trace_dir
+            base.copy_replace_file(f, dest)
+            # Make sure it's world-readable so containers can read it
+            os.chmod(dest, 0o555)
             break
 
 def package_extra_rr_trace_files():
