@@ -246,6 +246,8 @@ def package_source_files(source_dirs, comp_dir_substitutions):
     rr_output = run_rr_sources(comp_dir_substitutions, 'sources', [base.trace_dir])
     return package_source_files_from_rr_output(source_dirs, rr_output, comp_dir_substitutions, base.trace_dir, "user", "binary")
 
+# Package external debuginfo files and DWOs into the trace. Does not put them
+# in the right place for gdb to find them, yet, but Pernosco will find them.
 def package_debuginfo_files():
     rr_output = run_rr_sources([], 'sources', [base.trace_dir])
     rr_sources = json.loads(rr_output)
