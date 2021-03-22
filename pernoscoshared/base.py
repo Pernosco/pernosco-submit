@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import sys
 
 trace_dir = None
 echo_commands = False
