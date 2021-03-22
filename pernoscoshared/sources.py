@@ -246,9 +246,12 @@ def package_source_files(source_dirs, comp_dir_substitutions):
     rr_output = run_rr_sources(comp_dir_substitutions, 'sources', [base.trace_dir])
     return package_source_files_from_rr_output(source_dirs, rr_output, comp_dir_substitutions, base.trace_dir, "user", "binary")
 
-def package_source_files_from_rr_output(source_dirs, rr_output, comp_dir_substitutions, output_dir, tag, condition_type, build_dir=None):
+def package_debuginfo_files():
+    rr_output = run_rr_sources([], 'sources', [base.trace_dir])
     rr_sources = json.loads(rr_output)
+    package_debuginfo_from_sources_json(rr_sources, base.trace_dir)
 
+def package_debuginfo_from_sources_json(rr_sources, output_dir):
     if 'dwos' in rr_sources:
         dir = "%s/debug/.dwo/"%output_dir
         for e in rr_sources['dwos']:
@@ -271,6 +274,10 @@ def package_source_files_from_rr_output(source_dirs, rr_output, comp_dir_substit
                 sys.exit(1)
             dst = "%s/%s.%s"%(dir, build_id[2:], ext)
             base.copy_replace_file(e['path'], dst)
+
+def package_source_files_from_rr_output(source_dirs, rr_output, comp_dir_substitutions, output_dir, tag, condition_type, build_dir=None):
+    rr_sources = json.loads(rr_output)
+    package_debuginfo_from_sources_json(rr_sources, output_dir)
 
     out_sources = {};
     out_placeholders = {};
