@@ -35,6 +35,8 @@ public_key = output[5]
 def make_changes():
     with open("%s/main.c"%testdir, "a") as f:
         print("/* EXTRA JUNK */", file=f)
+    with open("%s/submodule/submodule.c"%testdir, "a") as f:
+        print("/* EXTRA JUNK */", file=f)
 
 def build():
     subprocess.check_call(['./build.sh'], cwd=testdir)
@@ -124,14 +126,18 @@ def validate_files_user():
 def validate_extra_rr_trace_files():
     assert os.path.exists("%s/files.extra/data"%trace_dir)
 
-def validate_sources_user(repo_url, repo_url_suffix):
+def validate_sources_user(repo_url, repo_url_suffix=None, submodule_repo_url=None):
     with open('%s/sources.user'%trace_dir) as f:
         files_user = json.loads(f.read())
     or_condition = files_user[0]['condition']['or']
     assert any(map(lambda x: x['binary'].endswith('librrpreload.so'), or_condition))
     assert any(map(lambda x: x['binary'].endswith('main'), or_condition))
     files = files_user[0]['files']
-    assert len(files) == 4
+    if submodule_repo_url:
+        assert len(files) == 5
+        assert any(map(lambda x: x.get('url') == submodule_repo_url and x['at'] == "%s/submodule"%testdir and x.get('urlSuffix') == repo_url_suffix, files))
+    else:
+        assert len(files) == 4
     assert any(map(lambda x: x.get('url') == repo_url and x['at'] == testdir and x.get('urlSuffix') == repo_url_suffix, files))
     assert any(map(lambda x: x.get('url') and x['url'].startswith('https://raw.githubusercontent.com/rr-debugger/rr/'), files))
     assert any(map(lambda x: x.get('archive') == 'files.user/sources.zip' and x['at'] == '/', files))
@@ -169,7 +175,7 @@ def validate_sources_extra(extra_part, repo_url, repo_url_suffix):
     assert or_condition[0]['buildid'] == build_id_for("%s/out/main"%testdir)
     assert files_user[0]['buildDir'] == testdir
     files = files_user[0]['files']
-    assert len(files) == 3
+    assert len(files) == 4
     assert any(map(lambda x: x.get('url') == repo_url and x['at'] == testdir and x.get('urlSuffix') == repo_url_suffix, files))
     assert any(map(lambda x: x.get('archive') == 'files.%s/sources.zip'%extra_part and x['at'] == '/', files))
     assert any(map(lambda x: x.get('link') == '%s/file.c'%testdir and x['at'] == '%s/out/file.c'%testdir, files))
@@ -183,13 +189,23 @@ def validate_sources_extra_zip(extra_part):
 
 def validate_sources_zip_path(path):
     sources_zip = zipfile.ZipFile(path)
-    sources_zip.getinfo('%s/out/message.h'%testdir)
-    sources_zip.getinfo('%s/main.c'%testdir)
-    try:
-        sources_zip.getinfo('usr/include/stdio.h')
-        assert False
-    except KeyError:
-        pass
+
+    def check_file_present(file):
+        sources_zip.getinfo(file)
+
+    def check_file_not_present(file):
+        try:
+            sources_zip.getinfo(file)
+            assert False
+        except KeyError:
+            pass
+
+    check_file_present('%s/out/message.h'%testdir)
+    check_file_present('%s/main.c'%testdir)
+    check_file_not_present('%s/file.h'%testdir)
+    check_file_present('%s/submodule/submodule.c'%testdir)
+    check_file_not_present('%s/submodule/submodule.h'%testdir)
+    check_file_not_present('usr/include/stdio.h')
 
 def validate_libthread_db():
     assert os.path.exists('%s/files.system-debuginfo/libthread_db.so'%trace_dir)
@@ -205,14 +221,15 @@ def validate_external_debuginfo():
 
 def validate_dwos():
     dwos = list(os.listdir('%s/debug/.dwo'%trace_dir))
-    assert len(dwos) == 2
+    assert len(dwos) == 3
     for f in dwos:
         assert f.endswith(".dwo")
 
 print("\nTesting Github checkout...")
 
-pernosco_submit_test_git_revision = '84861f84a7462c2b4e04b7b41f7f83616c83c8dc'
-subprocess.check_call(['git', 'clone', 'https://github.com/Pernosco/pernosco-submit-test'], cwd=tmpdir)
+pernosco_submit_test_git_revision = '0f1ecb7f6efb9814aeed722f12dd8fcf35166b32'
+pernosco_submit_test_submodule_git_revision = '5d1caa2e9a9967f3425b924b7e690965645df65e'
+subprocess.check_call(['git', 'clone', '--recurse-submodules', 'https://github.com/Pernosco/pernosco-submit-test'], cwd=tmpdir)
 testdir = "%s/pernosco-submit-test"%tmpdir
 subprocess.check_call(['git', 'checkout', '-q', pernosco_submit_test_git_revision], cwd=testdir)
 make_changes()
@@ -225,7 +242,7 @@ validate_producer_metadata()
 validate_files_user()
 validate_extra_rr_trace_files()
 github_raw_url = 'https://raw.githubusercontent.com/Pernosco/pernosco-submit-test/%s/'%pernosco_submit_test_git_revision
-validate_sources_user(github_raw_url, None)
+validate_sources_user(github_raw_url, submodule_repo_url="https://raw.githubusercontent.com/Pernosco/pernosco-submit-test-submodule/%s/"%pernosco_submit_test_submodule_git_revision)
 validate_sources_zip()
 validate_libthread_db()
 validate_external_debuginfo()
@@ -250,7 +267,7 @@ validate_sources_extra_zip(extra_part)
 
 print("\nTesting Mercurial checkout...")
 
-pernosco_submit_test_hg_revision = '1591b57de6f0042423129f14219ddaed04477d6a'
+pernosco_submit_test_hg_revision = '30dd82f42676c80a54e683c49a3ea5fd05e14903'
 subprocess.check_call(['hg', 'clone', 'http://hg.code.sf.net/p/pernosco-submit-test/code', 'pernosco-submit-test-hg', '-u', pernosco_submit_test_hg_revision], cwd=tmpdir)
 testdir = "%s/pernosco-submit-test-hg"%tmpdir
 make_changes()
@@ -260,7 +277,7 @@ assert submit_dry_run(prefer_env_vars=False).returncode == 0
 validate_dry_run()
 validate_producer_metadata()
 validate_files_user()
-validate_sources_user('https://sourceforge.net/p/pernosco-submit-test/code/ci/%s/tree/'%pernosco_submit_test_hg_revision, "?format=raw")
+validate_sources_user('https://sourceforge.net/p/pernosco-submit-test/code/ci/%s/tree/'%pernosco_submit_test_hg_revision, repo_url_suffix="?format=raw")
 validate_sources_zip()
 validate_libthread_db()
 validate_external_debuginfo()
@@ -280,7 +297,7 @@ assert submit_dry_run(title=None, url=None).returncode == 0
 validate_dry_run(title=None, url=None)
 validate_producer_metadata(title=None, url=None)
 validate_files_user()
-validate_sources_user('https://sourceforge.net/p/pernosco-submit-test/code/ci/%s/tree/'%pernosco_submit_test_hg_revision, "?format=raw")
+validate_sources_user('https://sourceforge.net/p/pernosco-submit-test/code/ci/%s/tree/'%pernosco_submit_test_hg_revision, repo_url_suffix="?format=raw")
 validate_sources_zip()
 validate_libthread_db()
 validate_external_debuginfo()

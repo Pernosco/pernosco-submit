@@ -214,7 +214,8 @@ def analyze_hg_repo(repo_path, files):
     return (mount, out_files)
 
 def analyze_repo(repo_path, files):
-    if os.path.isdir(os.path.join(repo_path, ".git")):
+    # This could be a plain file for a git submodule
+    if os.path.exists(os.path.join(repo_path, ".git")):
         return analyze_git_repo(repo_path, files)
     if os.path.isdir(os.path.join(repo_path, ".hg")):
         return analyze_hg_repo(repo_path, files)
