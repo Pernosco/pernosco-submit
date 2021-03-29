@@ -348,11 +348,14 @@ def package_source_files_from_rr_output(source_dirs, rr_output, comp_dir_substit
     out_placeholders['priority'] = 1000
 
     all_rules = [out_sources, out_placeholders]
-    for v in comp_dir_substitutions:
-        out_substitution = {}
-        out_substitution['condition'] = {'binary': v[0]};
-        out_substitution['overrideCompDir'] = v[1];
-        all_rules.append(out_substitution)
+    if len(comp_dir_substitutions) > 0:
+        if 'comp_dir_substitutions' in rr_sources:
+            substitutions = rr_sources['comp_dir_substitutions']
+            for s in substitutions:
+                out_substitution = {}
+                out_substitution['condition'] = {condition_type: s};
+                out_substitution['overrideCompDir'] = substitutions[s];
+                all_rules.append(out_substitution)
 
     with open('%s/sources.%s'%(output_dir, tag), "wt") as f:
         json.dump(all_rules, f, indent=2)

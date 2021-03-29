@@ -39,7 +39,11 @@ def make_changes():
         print("/* EXTRA JUNK */", file=f)
 
 def build():
-    subprocess.check_call(['./build.sh'], cwd=testdir)
+    # Temporarily rename the build directory so we can test that 'substitute' works
+    build_dir = "%s/%s-build"%(os.path.dirname(testdir), os.path.basename(testdir));
+    os.rename(testdir, build_dir)
+    subprocess.check_call(['./build.sh'], cwd=build_dir)
+    os.rename(build_dir, testdir)
 
 def create_extra_rr_trace_files():
     os.makedirs("%s/out/extra_rr_trace_files/files.extra"%testdir)
@@ -69,8 +73,8 @@ def submit_dry_run(title='FAKE TITLE', url='FAKE_ñ_URL', prefer_env_vars=True):
         with open(path, "w") as f:
             f.write(private_key)
         delete_path = True
-    cmd = ['./pernosco-submit', 'upload',
-           '--substitute', '%s=%s'%(main_binary(), testdir),
+    cmd = ['./pernosco-submit', '-x', 'upload',
+           '--substitute', 'main=%s'%testdir,
            '--dry-run', '%s/dry-run'%tmpdir, '--consent-to-current-privacy-policy']
     if title:
         cmd.extend(['--title', title])
@@ -257,7 +261,7 @@ for k in ['SSHPASS', 'AWS_SECRET_ACCESS_KEY', 'PERNOSCO_USER_SECRET_KEY']:
 
 # Test analyze-build
 subprocess.check_call(["./pernosco-submit", "analyze-build",
-                       '--substitute', '%s=%s'%(main_binary(), testdir),
+                       '--substitute', 'main=%s'%testdir,
                        "--allow-source", testdir, "--build-dir", testdir, tmpdir, "%s/out/main"%testdir])
 sources_extra_name = glob.glob("%s/extra_rr_trace_files/sources.extra*"%tmpdir)
 assert len(sources_extra_name) == 1
