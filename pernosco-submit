@@ -183,7 +183,7 @@ def maybe_write_mozilla_metadata():
         for name in original_file_names.splitlines():
             application_ini = b"%s/application.ini"%os.path.dirname(name)
             if os.path.isfile(application_ini):
-                copy_replace_file(application_ini, '%s/files.mozilla/application.ini'%args.trace_dir)
+                base.copy_replace_file(application_ini, '%s/files.mozilla/application.ini'%args.trace_dir)
                 return
 
 def write_metadata(pernosco_user, pernosco_group):
