@@ -1,12 +1,15 @@
 from __future__ import annotations
-from typing import Optional, List, IO, Union, Any, Mapping
+from typing import Optional, List, IO, Union, Any, Mapping, TYPE_CHECKING
 
 import os
 import shutil
 import subprocess
 import sys
 
-StrPath = Union[str, os.PathLike[str]]
+if TYPE_CHECKING:
+    StrPath = Union[str, os.PathLike[str]]
+else:
+    StrPath = Union[str, os.PathLike]
 
 class CustomException(Exception):
     pass

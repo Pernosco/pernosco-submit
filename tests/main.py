@@ -27,8 +27,10 @@ clean_env.pop('PERNOSCO_USER_SECRET_KEY', None)
 clean_env.pop('AWS_SECRET_ACCESS_KEY', None)
 clean_env.pop('SSHPASS', None)
 
+pernosco_submit = ['./pernosco-submit']
+
 # Test keygen and get some keys for us to use
-output = subprocess.check_output(["./pernosco-submit", "keygen", "FAKE_KEY_ID,FAKE_CRED"], encoding='utf-8').split()
+output = subprocess.check_output(pernosco_submit + ["keygen", "FAKE_KEY_ID,FAKE_CRED"], encoding='utf-8').split()
 private_key = output[2].split('=', 1)[1]
 public_key = output[5]
 
@@ -73,7 +75,7 @@ def submit_dry_run(title='FAKE TITLE', url='FAKE_ñ_URL', prefer_env_vars=True):
         with open(path, "w") as f:
             f.write(private_key)
         delete_path = True
-    cmd = ['./pernosco-submit', '-x', 'upload',
+    cmd = pernosco_submit + ['-x', 'upload',
            '--substitute', 'main=%s'%testdir,
            '--dry-run', '%s/dry-run'%tmpdir, '--consent-to-current-privacy-policy']
     if title:
@@ -260,7 +262,7 @@ for k in ['SSHPASS', 'AWS_SECRET_ACCESS_KEY', 'PERNOSCO_USER_SECRET_KEY']:
     assert submit_dry_run().returncode == 2
 
 # Test analyze-build
-subprocess.check_call(["./pernosco-submit", "analyze-build",
+subprocess.check_call(pernosco_submit + ["analyze-build",
                        '--substitute', 'main=%s'%testdir,
                        "--allow-source", testdir, "--build-dir", testdir, tmpdir, "%s/out/main"%testdir])
 sources_extra_name = glob.glob("%s/extra_rr_trace_files/sources.extra*"%tmpdir)
