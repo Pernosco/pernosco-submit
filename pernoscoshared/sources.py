@@ -41,6 +41,7 @@ class ExternalDebugInfo(TypedDict):
     type: str
 class Dwo(TypedDict):
     name: str
+    full_path: str
     trace_file: str
     comp_dir: str
     id: int
@@ -318,9 +319,15 @@ def package_debuginfo_from_sources_json(rr_sources: RrSources, output_dir: str) 
     if 'dwos' in rr_sources:
         dir = "%s/debug/.dwo/"%output_dir
         for d in rr_sources['dwos']:
-            path = os.path.join(d['comp_dir'], d['name'])
-            dst = "{0:s}/{1:0{2}x}.dwo".format(dir, d['id'], 16)
-            base.copy_replace_file(path, dst)
+            if 'full_path' in d:
+                path = d['full_path']
+            else:
+                path = os.path.join(d['comp_dir'], d['name'])
+            if os.path.isfile(path):
+                dst = "{0:s}/{1:0{2}x}.dwo".format(dir, d['id'], 16)
+                base.copy_replace_file(path, dst)
+            else:
+                print("Can't find DWO file %s, skipping"%path, file=sys.stderr)
 
     # Copy external debuginfo into place
     if 'external_debug_info' in rr_sources:
