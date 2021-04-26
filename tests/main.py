@@ -39,6 +39,11 @@ def make_changes():
         print("/* EXTRA JUNK */", file=f)
     with open("%s/submodule/submodule.c"%testdir, "a") as f:
         print("/* EXTRA JUNK */", file=f)
+    os.mkdir("%s/unreadable_dir"%testdir)
+    os.chmod("%s/unreadable_dir"%testdir, 0);
+
+def cleanup_changes():
+    os.chmod("%s/unreadable_dir"%testdir, 0o700)
 
 def build():
     # Temporarily rename the build directory so we can test that 'substitute' works
@@ -253,6 +258,7 @@ validate_sources_zip()
 validate_libthread_db()
 validate_external_debuginfo()
 validate_dwos()
+cleanup_changes()
 
 # Check pernosco-submit bails out when sensitive environment variables are present in the trace
 for k in ['SSHPASS', 'AWS_SECRET_ACCESS_KEY', 'PERNOSCO_USER_SECRET_KEY']:
@@ -288,6 +294,7 @@ validate_sources_zip()
 validate_libthread_db()
 validate_external_debuginfo()
 validate_dwos()
+cleanup_changes()
 
 print("\nTesting git-cinnabar checkout...")
 
@@ -308,6 +315,7 @@ validate_sources_zip()
 validate_libthread_db()
 validate_external_debuginfo()
 validate_dwos()
+cleanup_changes()
 
 print("\nPASS")
 

@@ -168,6 +168,8 @@ def git_changed_files(repo_path: str, files: List[str]) -> Dict[str, bool]:
     assert git.stdout
     for line in git.stdout:
         line_str = line.decode('utf-8')
+        if line_str.startswith("warning:"):
+            continue
         if line_str[2] != ' ':
             raise base.CustomException("Unexpected line: %s"%line_str)
         file = line_str[3:].rstrip()
