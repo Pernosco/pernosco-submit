@@ -167,6 +167,13 @@ SENSITIVE_ENV_VARS = {
     'STRIPE_SECRET_KEY': True,
 }
 
+def cpu_supports_cpuid_faulting() -> bool:
+    with open("/proc/cpuinfo") as f:
+        for line in f:
+            if "cpuid_fault" in line:
+                return True
+    return False
+
 def check_trace() -> None:
     output = base.check_output(['rr', 'traceinfo', args.trace_dir]).decode('utf-8')
     trace_info = json.loads(output)
@@ -180,13 +187,15 @@ def check_trace() -> None:
         else:
             print("CPU feature %s enabled when recording trace, but Pernosco does not support %s yet."%(banned[0], banned[0]), file=sys.stderr)
         if not args.ignore_warnings:
-            print("Re-record with `rr record --disable-cpuid-features-ext 0x%x,0x%x,0x%x`."%(
-                AVX512_CPUID_EXTENDED_FEATURES_EBX | SHA_CPUID_EXTENDED_FEATURES_EBX,
-                AVX512_CPUID_EXTENDED_FEATURES_ECX,
-                AVX512_CPUID_EXTENDED_FEATURES_EDX), file=sys.stderr)
-            sys.exit(2)
+            if cpu_supports_cpuid_faulting():
+                print("Re-record with `rr record --disable-cpuid-features-ext 0x%x,0x%x,0x%x`."%(
+                    AVX512_CPUID_EXTENDED_FEATURES_EBX | SHA_CPUID_EXTENDED_FEATURES_EBX,
+                    AVX512_CPUID_EXTENDED_FEATURES_ECX,
+                    AVX512_CPUID_EXTENDED_FEATURES_EDX), file=sys.stderr)
+                sys.exit(2)
+            print("Your CPU does not support CPUID faulting so we're just going to proceed and hope that stuff wasn't used!", file=sys.stderr)
         else:
-            print("Ignoring AVX512 enabled. This trace may fail to process!", file=sys.stderr)
+            print("Ignoring this problem, but this trace may fail to process!", file=sys.stderr)
     for env in trace_info['environ']:
         name = env.split('=', 1)[0]
         if name in SENSITIVE_ENV_VARS:
