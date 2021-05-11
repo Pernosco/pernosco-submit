@@ -380,6 +380,7 @@ def package_source_files_from_rr_output(source_dirs: List[str], rr_sources: RrSo
     # Install non-repo files
     print("Packaging %d modified and %d non-repository files..."%(len(explicit_files) - non_repo_files_count, non_repo_files_count))
 
+    os.makedirs("%s/files.%s"%(output_dir, tag), exist_ok=True)
     with zipfile.ZipFile('%s/files.%s/sources.zip'%(output_dir, tag), mode='w', compression=zipfile.ZIP_DEFLATED) as zip_file:
         for f in explicit_files:
             if allowed_file(source_dirs, f):
