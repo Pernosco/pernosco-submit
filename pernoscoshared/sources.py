@@ -162,7 +162,7 @@ def git_changed_files(repo_path: str, files: List[str]) -> Dict[str, bool]:
     h = {}
     for f in files:
         h[f] = True
-    git = base.Popen(['git', 'status', '--untracked-files=all', '--ignored', '--short'],
+    git = base.Popen(['git', 'status', '--untracked-files=all', '--ignored', '--short', '--porcelain'],
                 cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     ret = {}
     assert git.stdout
@@ -171,7 +171,8 @@ def git_changed_files(repo_path: str, files: List[str]) -> Dict[str, bool]:
         if line_str.startswith("warning:"):
             continue
         if line_str[2] != ' ':
-            raise base.CustomException("Unexpected line: %s"%line_str)
+            raise base.CustomException("Unexpected line: %s; got char %d instead of space"%
+                (line_str, ord(line_str[2])))
         file = line_str[3:].rstrip()
         if file in h:
             ret[file] = True
