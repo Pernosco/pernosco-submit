@@ -362,7 +362,7 @@ def upload_file(nonce: Nonce, signature: Signature, aws_access_key_id: AwsAccess
         checker_args.extend(["PROD"])
     checker_args.extend(["--payload", "\"publickey=%s,user=%s,group=%s\""%(strip_wrapper(public_key), pernosco_user, pernosco_group), "/dev/null"])
 
-    aws_cmd = ["aws", "s3", "cp", "--metadata", metadata, payload_file_name, s3_url]
+    aws_cmd = ["aws", "s3", "cp", "--metadata", metadata, "--endpoint-url", "https://s3-accelerate.amazonaws.com", payload_file_name, s3_url]
 
     if args.subcommand == 'upload' and args.dry_run:
         base.check_call(["cp", payload_file_name, args.dry_run])
