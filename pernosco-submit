@@ -62,11 +62,11 @@ upload_subparser.add_argument("--dry-run", metavar="PATH", help="Instead of uplo
 upload_subparser.add_argument("trace_dir")
 upload_subparser.add_argument("source_dirs", nargs="*")
 
-upload_package_subparser = arg_subparsers.add_parser("upload-package", help="Upload a package created using `pernosco-submit upload --dry-run' to Pernosco")
+upload_package_subparser = arg_subparsers.add_parser("upload-package", help="Upload a package created using `pernosco-submit upload --dry-run` to Pernosco")
 upload_package_subparser.add_argument("--title", help="Display the given name in the Pernosco UI and tab title")
 upload_package_subparser.add_argument("--url", help="Make the name a link to the given URL")
 upload_package_subparser.add_argument("--consent-to-current-privacy-policy", action='store_true', help="Unconditionally consent to the current privacy policy")
-upload_package_subparser.add_argument("package", help="Name of the package file produced by `pernosco-submit upload --dry-run'")
+upload_package_subparser.add_argument("package", help="Name of the package file produced by `pernosco-submit upload --dry-run`")
 
 analyze_build_subparser = arg_subparsers.add_parser("analyze-build", help="Create extra-rr-trace-files/ containing source file metadata obtained by scanning built binaries and source file repositories")
 analyze_build_subparser.add_argument("--build-dir", help="Specify build directory to use as base for relative DW_AT_comp_dir")
@@ -606,7 +606,7 @@ def upload_cmd() -> None:
 
 def upload_package_cmd() -> None:
     """
-    Upload a package created using `pernosco-submit upload --dry-run' to Pernosco.
+    Upload a package created using `pernosco-submit upload --dry-run` to Pernosco.
     """
     check_for_aws_command()
     check_title_and_url_args()
