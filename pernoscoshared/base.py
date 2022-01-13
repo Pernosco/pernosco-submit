@@ -36,7 +36,15 @@ def check_output(process_args: List[str], cwd: Optional[str] = None, close_fds: 
         stderr: Union[None, int, IO[Any]] = None, input: bytes = b"") -> bytes:
     if echo_commands:
         print("Running %s"%(" ".join(process_args)))
-    return subprocess.check_output(process_args, cwd=cwd, close_fds=close_fds, env=env, stdin=stdin, stderr=stderr, input=input)
+    if len(input) != 0:
+        input_arg = {
+            "input": input,
+        }
+    else:
+        input_arg = {
+            "stdin": stdin
+        }
+    return subprocess.check_output(process_args, cwd=cwd, close_fds=close_fds, env=env, stderr=stderr, **input_arg)
 
 def call(process_args: List[str], cwd: Optional[str] = None, close_fds: bool=True,
         env: Optional[Mapping[str, str]] = None, stdin: Union[None, int, IO[Any]] = None,
