@@ -114,9 +114,14 @@ def validate_dry_run(title="FAKE%20TITLE", url="FAKE_%C3%B1_URL"):
         assert metadata[expect_metadata_len] == "url=%s"%url
         expect_metadata_len += 1
     assert len(metadata) == expect_metadata_len
-    assert not os.path.exists(aws_cmd[5]) # temp file should have been cleaned up
-    assert aws_cmd[6].startswith("s3://pernosco-upload/")
-    assert aws_cmd[6].endswith(".tar.zst")
+    if aws_cmd[5] == "--endpoint-url":
+        assert aws_cmd[6].startswith("https://s3-accelerate.amazonaws.com")
+        assert not os.path.exists(aws_cmd[7]) # temp file should have been cleaned up
+        assert aws_cmd[8].endswith(".tar.zst")
+    else:
+        assert not os.path.exists(aws_cmd[5]) # temp file should have been cleaned up
+        assert aws_cmd[6].startswith("s3://pernosco-upload/")
+        assert aws_cmd[6].endswith(".tar.zst")
     aws_env = cmd_obj['aws_env']
     assert aws_env['AWS_DEFAULT_REGION'] == 'us-east-2'
     assert aws_env['AWS_ACCESS_KEY_ID'] == 'FAKE_KEY_ID'
