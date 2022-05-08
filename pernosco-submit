@@ -44,9 +44,15 @@ class CryptoData(TypedDict):
     signature: Signature
     nonce: Nonce
 
+def store_positive(value: str) -> int:
+    i = int(value)
+    if i <= 0:
+        raise argparse.ArgumentTypeError("%s is not a positive integer" % value)
+    return i
+
 arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument("-x", dest='echo_commands', action='store_true', help="Echo spawned command lines")
-arg_parser.add_argument("--ignore-warnings", action='store_true', help="Making warnings non-fatal")
+arg_parser.add_argument("--ignore-warnings", type=store_positive, default=0, help="Make the first N warnings non-fatal")
 arg_subparsers = arg_parser.add_subparsers(dest='subcommand')
 
 keygen_subparser = arg_subparsers.add_parser("keygen", help="Generate a new public/private key pair for use with Pernosco. Only useful if someone has instructed you to use this.")
@@ -186,25 +192,28 @@ def check_trace() -> None:
             print("CPU features %s enabled when recording trace, but Pernosco does not support them yet."%(" and ".join(banned)), file=sys.stderr)
         else:
             print("CPU feature %s enabled when recording trace, but Pernosco does not support %s yet."%(banned[0], banned[0]), file=sys.stderr)
-        if not args.ignore_warnings:
-            if cpu_supports_cpuid_faulting():
+        if cpu_supports_cpuid_faulting():
+            if args.ignore_warnings > 0:
+                args.ignore_warnings -= 1
+                print("Ignoring this problem, but this trace may fail to process!", file=sys.stderr)
+            else:
                 print("Re-record with `rr record --disable-cpuid-features-ext 0x%x,0x%x,0x%x`."%(
                     AVX512_CPUID_EXTENDED_FEATURES_EBX | SHA_CPUID_EXTENDED_FEATURES_EBX,
                     AVX512_CPUID_EXTENDED_FEATURES_ECX,
                     AVX512_CPUID_EXTENDED_FEATURES_EDX), file=sys.stderr)
                 sys.exit(2)
-            print("Your CPU does not support CPUID faulting so we're just going to proceed and hope that stuff wasn't used!", file=sys.stderr)
         else:
-            print("Ignoring this problem, but this trace may fail to process!", file=sys.stderr)
+            print("Your CPU does not support CPUID faulting so we're just going to proceed and hope that stuff wasn't used!", file=sys.stderr)
     for env in trace_info['environ']:
         name = env.split('=', 1)[0]
         if name in SENSITIVE_ENV_VARS:
             print("Sensitive environment variable %s found in initial recorded process."%name, file=sys.stderr)
-            if not args.ignore_warnings:
+            if args.ignore_warnings > 0:
+                args.ignore_warnings -= 1
+                print("Ignoring presence of sensitive environment variables. Values will be disclosed!", file=sys.stderr)
+            else:
                 print("Re-record with environment variable unset.", file=sys.stderr)
                 sys.exit(2)
-            else:
-                print("Ignoring presence of sensitive environment variables. Values will be disclosed!", file=sys.stderr)
 
 def maybe_write_mozilla_metadata() -> None:
     for firefox_bin in glob.glob("%s/mmap_*_firefox*"%args.trace_dir):
@@ -582,7 +591,7 @@ def upload_cmd() -> None:
     check_upload_analyze_requirements()
     check_for_aws_command()
 
-    if args.ignore_warnings:
+    if args.ignore_warnings > 0:
         print("Ignoring the automated trace check (not recommended!)", file=sys.stderr)
 
     check_title_and_url_args()
