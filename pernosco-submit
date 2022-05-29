@@ -151,7 +151,6 @@ def check_privacy_policy_consent() -> None:
 AVX512_CPUID_EXTENDED_FEATURES_EBX = 0xdc230000
 AVX512_CPUID_EXTENDED_FEATURES_ECX = 0x00002c42
 AVX512_CPUID_EXTENDED_FEATURES_EDX = 0x0000000c
-SHA_CPUID_EXTENDED_FEATURES_EBX = 0x20000000
 
 def has_banned(cpuid_records: List[List[int]]) -> List[str]:
     bans = []
@@ -161,8 +160,6 @@ def has_banned(cpuid_records: List[List[int]]) -> List[str]:
                 (r[4] & AVX512_CPUID_EXTENDED_FEATURES_ECX) != 0 or
                 (r[5] & AVX512_CPUID_EXTENDED_FEATURES_EDX) != 0):
                 bans.append("AVX512");
-            if (r[3] & SHA_CPUID_EXTENDED_FEATURES_EBX) != 0:
-                bans.append("SHA extensions");
     return bans
 
 SENSITIVE_ENV_VARS = {
@@ -198,7 +195,7 @@ def check_trace() -> None:
                 print("Ignoring this problem, but this trace may fail to process!", file=sys.stderr)
             else:
                 print("Re-record with `rr record --disable-cpuid-features-ext 0x%x,0x%x,0x%x`."%(
-                    AVX512_CPUID_EXTENDED_FEATURES_EBX | SHA_CPUID_EXTENDED_FEATURES_EBX,
+                    AVX512_CPUID_EXTENDED_FEATURES_EBX,
                     AVX512_CPUID_EXTENDED_FEATURES_ECX,
                     AVX512_CPUID_EXTENDED_FEATURES_EDX), file=sys.stderr)
                 sys.exit(2)
