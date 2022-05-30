@@ -402,13 +402,16 @@ def package_source_files_from_rr_output(source_dirs: List[str], rr_sources: RrSo
                         print("Not uploading source file %s (add an allowed source directory to the command line?)"%f)
                     if disallowed_file_count == 11:
                         print("(too many disallowed-source-file warnings, suppressing the rest)")
-    out_mounts.append({'archive': 'files.%s/sources.zip'%tag, 'at': '/'})
-    out_placeholder_mounts.append({'archive': 'files.%s/sources-placeholders.zip'%tag, 'at': '/'})
+    sources: ArchiveMount = {'archive': 'files.%s/sources.zip'%tag, 'at': '/'}
+    out_mounts.append(sources)
+    sources_placeholders: ArchiveMount = {'archive': 'files.%s/sources-placeholders.zip'%tag, 'at': '/'}
+    out_placeholder_mounts.append(sources_placeholders)
     # Add symlinks
     for s in rr_sources['symlinks']:
         # A symlink at 'from' points to the file at 'to'. So, we want to create
         # a symlink *at* 'from' which is *links* to 'to'.
-        out_mounts.append({'link': s['to'], 'at': s['from']})
+        symlink: LinkMount = {'link': s['to'], 'at': s['from']}
+        out_mounts.append(symlink)
     # Dump output
     if build_dir:
         out_sources['buildDir'] = build_dir
