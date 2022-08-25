@@ -364,6 +364,7 @@ def package_source_files_from_rr_output(allowed_source_dirs: List[str], copy_sou
     out_mounts: List[Mount] = []
     out_placeholder_mounts: List[Mount] = []
     repo_paths = []
+    copied_repo_paths = []
     non_repo_files_count = 0;
     # Mount repos
     for repo_path in rr_sources['files']:
@@ -382,6 +383,7 @@ def package_source_files_from_rr_output(allowed_source_dirs: List[str], copy_sou
                 forced_copy = True
                 break
         if forced_copy:
+            copied_repo_paths.append(repo_path)
             continue
         repo_paths.append(repo_path)
         (repo_mount, modified_files) = analyze_repo(repo_path, files)
@@ -445,6 +447,7 @@ def package_source_files_from_rr_output(allowed_source_dirs: List[str], copy_sou
 
     with open('%s/sources.%s'%(output_dir, tag), "wt") as out_f:
         json.dump(all_rules, out_f, indent=2)
+    repo_paths.extend(copied_repo_paths)
     return repo_paths
 
 # The files under these paths are copied into gdbinit/
@@ -457,6 +460,9 @@ gdb_paths: List[str] = [
     'tools/gdb',
     'third_party/libcxx-pretty-printers',
     'third_party/blink/tools/gdb',
+    'third_party/skia/tools/gdb',
+    'v8/tools/gdbinit',
+    'v8/tools/gdb-v8-support.py',
 ]
 
 def package_gdbinit(repo_paths: List[str], out_dir: str) -> None:
@@ -482,8 +488,11 @@ import sys
 sys.path.insert(0, "/trace/gdbinit/%s/tools/gdb/")
 sys.path.insert(0, "/trace/gdbinit/%s/third-party/libcxx-pretty-printers/")
 import gdb_chrome
-from libcxx.v1.printers import register_libcxx_printers
-register_libcxx_printers(None)
+try:
+    from libcxx.v1.printers import register_libcxx_printers
+    register_libcxx_printers(None)
+except Exception:
+    pass
 gdb.execute('source /trace/gdbinit/%s/tools/gdb/viewg.gdb')
 end
 """%(sub_path, sub_path, sub_path))
