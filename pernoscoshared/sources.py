@@ -306,10 +306,11 @@ def run_rr_sources(comp_dir_substitutions: Dict[str, str], cmd: str, params: Lis
         sys.exit(1)
     return cast(RrSources, json.loads(rr_output))
 
-def package_source_files(source_dirs: List[str], comp_dir_substitutions: Dict[str, str]) -> List[str]:
+def package_source_files(allowed_source_dirs: List[str], copy_source_dirs: List[str],
+        comp_dir_substitutions: Dict[str, str]) -> List[str]:
     assert base.trace_dir
     rr_sources = run_rr_sources(comp_dir_substitutions, 'sources', [base.trace_dir])
-    return package_source_files_from_rr_output(source_dirs, rr_sources, comp_dir_substitutions, base.trace_dir, "user", "binary")
+    return package_source_files_from_rr_output(allowed_source_dirs, copy_source_dirs, rr_sources, comp_dir_substitutions, base.trace_dir, "user", "binary")
 
 # Package external debuginfo files and DWOs into the trace. Does not put them
 # in the right place for gdb to find them, yet, but Pernosco will find them.
@@ -348,7 +349,7 @@ def package_debuginfo_from_sources_json(rr_sources: RrSources, output_dir: str) 
             dst = "%s/%s.%s"%(dir, build_id[2:], ext)
             base.copy_replace_file(e['path'], dst)
 
-def package_source_files_from_rr_output(source_dirs: List[str], rr_sources: RrSources,
+def package_source_files_from_rr_output(allowed_source_dirs: List[str], copy_source_dirs: List[str], rr_sources: RrSources,
       comp_dir_substitutions: Dict[str, str], output_dir: str, tag: str, condition_type: str, build_dir: Optional[str]=None) -> List[str]:
     package_debuginfo_from_sources_json(rr_sources, output_dir)
 
@@ -371,6 +372,17 @@ def package_source_files_from_rr_output(source_dirs: List[str], rr_sources: RrSo
             non_repo_files_count = len(files)
             explicit_files.extend(files)
             continue
+        forced_copy = False
+        for copy_source_dir in copy_source_dirs:
+            if os.path.commonpath([copy_source_dir, repo_path]) == copy_source_dir:
+                print("Copying all files in %s"%repo_path)
+                non_repo_files_count += len(files)
+                for f in files:
+                    explicit_files.append(os.path.join(repo_path, f))
+                forced_copy = True
+                break
+        if forced_copy:
+            continue
         repo_paths.append(repo_path)
         (repo_mount, modified_files) = analyze_repo(repo_path, files)
         for m in modified_files:
@@ -384,7 +396,7 @@ def package_source_files_from_rr_output(source_dirs: List[str], rr_sources: RrSo
     os.makedirs("%s/files.%s"%(output_dir, tag), exist_ok=True)
     with zipfile.ZipFile('%s/files.%s/sources.zip'%(output_dir, tag), mode='w', compression=zipfile.ZIP_DEFLATED) as zip_file:
         for f in explicit_files:
-            if allowed_file(source_dirs, f):
+            if allowed_file(allowed_source_dirs, f):
                 # Don't call zip_file.write(f) since that tries to preserve timestamps,
                 # which fails for timestamps before 1980
                 with open(f, "rb") as file:
@@ -392,9 +404,9 @@ def package_source_files_from_rr_output(source_dirs: List[str], rr_sources: RrSo
     disallowed_file_count = 0
     with zipfile.ZipFile('%s/files.%s/sources-placeholders.zip'%(output_dir, tag), mode='w', compression=zipfile.ZIP_DEFLATED) as zip_file:
         for f in explicit_files:
-            if not allowed_file(source_dirs, f):
+            if not allowed_file(allowed_source_dirs, f):
                 content = ("/* This file was not uploaded because the path %s is not under the allowed directories [%s] */"%
-                    (f, ", ".join(['"%s"'%d for d in source_dirs])))
+                    (f, ", ".join(['"%s"'%d for d in allowed_source_dirs])))
                 zip_file.writestr(f, content)
                 if not ("/.cargo/registry/src/" in f):
                     disallowed_file_count += 1
