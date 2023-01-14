@@ -42,6 +42,7 @@ class ExternalDebugInfo(TypedDict):
 class Dwo(TypedDict):
     name: str
     full_path: str
+    build_id: Optional[str]
     trace_file: str
     comp_dir: str
     id: int
@@ -320,20 +321,8 @@ def package_debuginfo_files() -> None:
     package_debuginfo_from_sources_json(rr_sources, base.trace_dir)
 
 def package_debuginfo_from_sources_json(rr_sources: RrSources, output_dir: str) -> None:
-    if 'dwos' in rr_sources:
-        dir = "%s/debug/.dwo/"%output_dir
-        for d in rr_sources['dwos']:
-            if 'full_path' in d:
-                path = d['full_path']
-            else:
-                path = os.path.join(d['comp_dir'], d['name'])
-            if os.path.isfile(path):
-                dst = "{0:s}/{1:0{2}x}.dwo".format(dir, d['id'], 16)
-                base.copy_replace_file(path, dst)
-            else:
-                print("Can't find DWO file %s, skipping"%path, file=sys.stderr)
-
     # Copy external debuginfo into place
+    dwps = set()
     if 'external_debug_info' in rr_sources:
         for e in rr_sources['external_debug_info']:
             build_id = e['build_id']
@@ -343,11 +332,32 @@ def package_debuginfo_from_sources_json(rr_sources: RrSources, output_dir: str) 
                 ext = "debug"
             elif t == 'debugaltlink':
                 ext = "sup"
+            elif t == 'dwp':
+                ext = "dwp"
+                dwps.add(build_id)
             else:
-                print("Unknown type '%s' from 'rr sources': is this script out of date? Aborting.", file=sys.stderr)
+                print("Unknown type '%s' from 'rr sources': is this script out of date? Aborting."%t, file=sys.stderr)
                 sys.exit(1)
             dst = "%s/%s.%s"%(dir, build_id[2:], ext)
             base.copy_replace_file(e['path'], dst)
+
+    if 'dwos' in rr_sources:
+        dir = "%s/debug/.dwo/"%output_dir
+        for d in rr_sources['dwos']:
+            if 'build_id' in d and d['build_id'] in dwps:
+                print("Skipping", file=sys.stderr)
+                continue
+            print(dwps, file=sys.stderr)
+            print(d, file=sys.stderr)
+            if 'full_path' in d:
+                path = d['full_path']
+            else:
+                path = os.path.join(d['comp_dir'], d['name'])
+            if os.path.isfile(path):
+                dst = "{0:s}/{1:0{2}x}.dwo".format(dir, d['id'], 16)
+                base.copy_replace_file(path, dst)
+            else:
+                print("Can't find DWO file %s, skipping"%path, file=sys.stderr)
 
 def package_source_files_from_rr_output(allowed_source_dirs: List[str], copy_source_dirs: List[str], rr_sources: RrSources,
       comp_dir_substitutions: Dict[str, str], output_dir: str, tag: str, condition_type: str, build_dir: Optional[str]=None) -> List[str]:
