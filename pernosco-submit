@@ -64,6 +64,7 @@ upload_subparser.add_argument("--url", help="Make the name a link to the given U
 upload_subparser.add_argument("--consent-to-current-privacy-policy", action='store_true', help="Unconditionally consent to the current privacy policy")
 upload_subparser.add_argument("--no-local-sources", action='store_true', help="Don't try to upload any locally modified or generated sources")
 upload_subparser.add_argument("--substitute", metavar='LIB=WITH_PATH', action='append', default=[], help="Override the DW_AT_comp_dir for compilation units of the named library to the named path. Adds WITH_PATH to the allowed source paths. LIB must be the basename of the original name of the library, e.g. 'libc-2.32.so'.")
+upload_subparser.add_argument("--copy-sources", action='append', default=[], help="Copy sources under this directory into the recording")
 upload_subparser.add_argument("--dry-run", metavar="PATH", help="Instead of uploading the package, copies it to the given path. Also writes the command/env to <path>.cmd.")
 upload_subparser.add_argument("trace_dir")
 upload_subparser.add_argument("source_dirs", nargs="*")
@@ -79,6 +80,7 @@ analyze_build_subparser.add_argument("--build-dir", help="Specify build director
 analyze_build_subparser.add_argument("--no-local-sources", action='store_true', help="Don't try to upload any locally modified or generated sources")
 analyze_build_subparser.add_argument("--substitute", metavar='LIB=WITH_PATH', action='append', default=[], help="Override the DW_AT_comp_dir for compilation units of the named library to the named path. Adds WITH_PATH to the allowed source paths. LIB must be the basename of the original name of the library, e.g. 'libc-2.32.so'.")
 analyze_build_subparser.add_argument("--allow-source", metavar='PATH', dest="source_dirs", action='append', default=[], help="Add this path to the list of allowed source paths")
+analyze_build_subparser.add_argument("--copy-sources", action='append', default=[], help="Copy sources under this directory into the recording")
 analyze_build_subparser.add_argument("output_dir", help="Where to place extra_rr_trace_files/")
 analyze_build_subparser.add_argument("binaries", nargs="*", help="Binary files to scan")
 
@@ -520,8 +522,9 @@ def check_upload_analyze_requirements() -> None:
         print("rr is out of date. Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
         sys.exit(1)
 
-def collect_source_dirs() -> Tuple[List[str], Dict[str, str]]:
+def collect_source_dirs() -> Tuple[List[str], List[str], Dict[str, str]]:
     source_dirs = []
+    copy_source_dirs = []
     comp_dir_substitutions = {}
     for s in args.substitute:
         (library, path) = s.split('=', maxsplit=1)
@@ -532,13 +535,17 @@ def collect_source_dirs() -> Tuple[List[str], Dict[str, str]]:
         comp_dir_substitutions[library] = path
     for d in args.source_dirs:
         source_dirs.append(os.path.realpath(d))
+    for d in args.copy_sources:
+        d = os.path.realpath(d)
+        source_dirs.append(d)
+        copy_source_dirs.append(d)
     if not args.no_local_sources and len(source_dirs) == 0:
         print("No source directories were provided. Use --no-local-sources if this is intentional.", file=sys.stderr)
         sys.exit(1)
     if len(source_dirs) > 0 and args.no_local_sources:
         print("--no-local-sources was specified but source directories %s were provided"%source_dirs, file=sys.stderr)
         sys.exit(1)
-    return (source_dirs, comp_dir_substitutions)
+    return (source_dirs, copy_source_dirs, comp_dir_substitutions)
 
 def get_config_var(name: str) -> str:
     env_var = "PERNOSCO_%s"%(name.upper())
@@ -598,7 +605,7 @@ def upload_cmd() -> None:
         sys.exit(1)
 
 
-    (source_dirs, comp_dir_substitutions) = collect_source_dirs()
+    (source_dirs, copy_source_dirs, comp_dir_substitutions) = collect_source_dirs()
     check_privacy_policy_consent()
     check_trace()
     (pernosco_user, pernosco_group, pernosco_user_secret_key) = get_config()
@@ -606,7 +613,7 @@ def upload_cmd() -> None:
     packaging.rr_pack()
     packaging.package_libthread_db()
     packaging.package_extra_rr_trace_files()
-    repo_paths = sources.package_source_files(source_dirs, [], comp_dir_substitutions)
+    repo_paths = sources.package_source_files(source_dirs, copy_source_dirs, comp_dir_substitutions)
     sources.package_gdbinit(repo_paths, "%s/gdbinit"%args.trace_dir)
     upload(pernosco_user, pernosco_group, pernosco_user_secret_key)
 
@@ -623,19 +630,20 @@ def upload_package_cmd() -> None:
     (pernosco_user, pernosco_group, pernosco_user_secret_key) = get_config()
     upload_package(pernosco_user, pernosco_group, pernosco_user_secret_key, package_file_name)
 
-def package_source_files_extra(source_dirs: List[str], comp_dir_substitutions: Dict[str, str]) -> List[str]:
+def package_source_files_extra(source_dirs: List[str], copy_source_dirs: List[str],
+      comp_dir_substitutions: Dict[str, str]) -> List[str]:
     rr_output = sources.run_rr_sources(comp_dir_substitutions, 'explicit-sources', args.binaries)
     tag = "extra.%s"%(hex(random.randrange(pow(2,64)))[2:])
     output_dir = "%s/extra_rr_trace_files"%args.output_dir
     os.makedirs("%s/files.%s"%(output_dir, tag), exist_ok=True)
-    return sources.package_source_files_from_rr_output(source_dirs, [], rr_output, comp_dir_substitutions, output_dir, tag, "buildid", build_dir=args.build_dir)
+    return sources.package_source_files_from_rr_output(source_dirs, copy_source_dirs, rr_output, comp_dir_substitutions, output_dir, tag, "buildid", build_dir=args.build_dir)
 
 def analyze_build_cmd() -> None:
     check_upload_analyze_requirements()
 
-    (source_dirs, comp_dir_substitutions) = collect_source_dirs()
+    (source_dirs, copy_source_dirs, comp_dir_substitutions) = collect_source_dirs()
 
-    repo_paths = package_source_files_extra(source_dirs, comp_dir_substitutions)
+    repo_paths = package_source_files_extra(source_dirs, copy_source_dirs, comp_dir_substitutions)
     sources.package_gdbinit(repo_paths, "%s/extra_rr_trace_files/gdbinit"%args.output_dir)
 
 if args.subcommand == 'upload':
