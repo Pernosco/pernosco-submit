@@ -26,6 +26,7 @@ clean_env = dict(os.environ, _RR_TRACE_DIR=tmpdir)
 clean_env.pop('PERNOSCO_USER_SECRET_KEY', None)
 clean_env.pop('AWS_SECRET_ACCESS_KEY', None)
 clean_env.pop('SSHPASS', None)
+clean_env.pop('STRIPE_SECRET_KEY', None)
 
 pernosco_submit = ['./pernosco-submit']
 
@@ -142,14 +143,20 @@ def validate_files_user():
 def validate_extra_rr_trace_files():
     assert os.path.exists("%s/files.extra/data"%trace_dir)
 
-def validate_sources_user(repo_url, repo_url_suffix=None, submodule_repo_url=None):
+def validate_sources_user(repo_url, repo_url_suffix=None, submodule_repo_url=None, submodule_private_repo_url=None):
     with open('%s/sources.user'%trace_dir) as f:
         files_user = json.loads(f.read())
     or_condition = files_user[0]['condition']['or']
     assert any(map(lambda x: x['binary'].endswith('librrpreload.so'), or_condition))
     assert any(map(lambda x: x['binary'].endswith('main'), or_condition))
     files = files_user[0]['files']
-    if submodule_repo_url:
+    if submodule_private_repo_url:
+        assert not submodule_repo_url == None
+        assert len(files) == 6
+        print(submodule_private_repo_url)
+        print(files)
+        assert any(map(lambda x: x.get('url') == submodule_private_repo_url and x['at'] == "%s/submodule-private"%testdir and x.get('urlSuffix') == repo_url_suffix, files))
+    elif submodule_repo_url:
         assert len(files) == 5
         assert any(map(lambda x: x.get('url') == submodule_repo_url and x['at'] == "%s/submodule"%testdir and x.get('urlSuffix') == repo_url_suffix, files))
     else:
@@ -191,7 +198,7 @@ def validate_sources_extra(extra_part, repo_url, repo_url_suffix):
     assert or_condition[0]['buildid'] == build_id_for("%s/out/main"%testdir)
     assert files_user[0]['buildDir'] == testdir
     files = files_user[0]['files']
-    assert len(files) == 4
+    assert len(files) == 5
     assert any(map(lambda x: x.get('url') == repo_url and x['at'] == testdir and x.get('urlSuffix') == repo_url_suffix, files))
     assert any(map(lambda x: x.get('archive') == 'files.%s/sources.zip'%extra_part and x['at'] == '/', files))
     assert any(map(lambda x: x.get('link') == '%s/file.c'%testdir and x['at'] == '%s/out/file.c'%testdir, files))
@@ -237,14 +244,15 @@ def validate_external_debuginfo():
 
 def validate_dwos():
     dwos = list(os.listdir('%s/debug/.dwo'%trace_dir))
-    assert len(dwos) == 3
+    assert len(dwos) == 4
     for f in dwos:
         assert f.endswith(".dwo")
 
 print("\nTesting Github checkout...")
 
-pernosco_submit_test_git_revision = '0f1ecb7f6efb9814aeed722f12dd8fcf35166b32'
+pernosco_submit_test_git_revision = '82ce7a2dda8c00e3c0c20aebb93bb79f6ab7da26'
 pernosco_submit_test_submodule_git_revision = '5d1caa2e9a9967f3425b924b7e690965645df65e'
+pernosco_submit_test_submodule_private_git_revision = '06d6d2214bfc1b6194377a20a4d56dad687fccbf'
 subprocess.check_call(['git', 'clone', '--recurse-submodules', 'https://github.com/Pernosco/pernosco-submit-test'], cwd=tmpdir)
 testdir = "%s/pernosco-submit-test"%tmpdir
 subprocess.check_call(['git', 'checkout', '-q', pernosco_submit_test_git_revision], cwd=testdir)
@@ -258,7 +266,7 @@ validate_producer_metadata()
 validate_files_user()
 validate_extra_rr_trace_files()
 github_raw_url = 'https://raw.githubusercontent.com/Pernosco/pernosco-submit-test/%s/'%pernosco_submit_test_git_revision
-validate_sources_user(github_raw_url, submodule_repo_url="https://raw.githubusercontent.com/Pernosco/pernosco-submit-test-submodule/%s/"%pernosco_submit_test_submodule_git_revision)
+validate_sources_user(github_raw_url, submodule_repo_url="https://raw.githubusercontent.com/Pernosco/pernosco-submit-test-submodule/%s/"%pernosco_submit_test_submodule_git_revision, submodule_private_repo_url="https://raw.githubusercontent.com/Pernosco/pernosco-submit-test-private-submodule/%s/"%pernosco_submit_test_submodule_private_git_revision)
 validate_sources_zip()
 validate_libthread_db()
 validate_external_debuginfo()
@@ -284,7 +292,7 @@ validate_sources_extra_zip(extra_part)
 
 print("\nTesting Mercurial checkout...")
 
-pernosco_submit_test_hg_revision = '30dd82f42676c80a54e683c49a3ea5fd05e14903'
+pernosco_submit_test_hg_revision = '0049ebe540cbe86278f29dce682e0fda050de59d'
 subprocess.check_call(['hg', 'clone', 'http://hg.code.sf.net/p/pernosco-submit-test/code', 'pernosco-submit-test-hg', '-u', pernosco_submit_test_hg_revision], cwd=tmpdir)
 testdir = "%s/pernosco-submit-test-hg"%tmpdir
 make_changes()
