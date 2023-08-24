@@ -308,10 +308,10 @@ def run_rr_sources(comp_dir_substitutions: Dict[str, str], cmd: str, params: Lis
     return cast(RrSources, json.loads(rr_output))
 
 def package_source_files(allowed_source_dirs: List[str], copy_source_dirs: List[str],
-        comp_dir_substitutions: Dict[str, str]) -> List[str]:
+        comp_dir_substitutions: Dict[str, str], build_dir: Optional[str] = None) -> List[str]:
     assert base.trace_dir
     rr_sources = run_rr_sources(comp_dir_substitutions, 'sources', [base.trace_dir])
-    return package_source_files_from_rr_output(allowed_source_dirs, copy_source_dirs, rr_sources, comp_dir_substitutions, base.trace_dir, "user", "binary")
+    return package_source_files_from_rr_output(allowed_source_dirs, copy_source_dirs, rr_sources, comp_dir_substitutions, base.trace_dir, "user", "binary", build_dir)
 
 # Package external debuginfo files and DWOs into the trace. Does not put them
 # in the right place for gdb to find them, yet, but Pernosco will find them.

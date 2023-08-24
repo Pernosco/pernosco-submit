@@ -64,6 +64,7 @@ upload_subparser = arg_subparsers.add_parser("upload", help="Upload a trace to P
 upload_subparser.add_argument("--title", help="Display the given name in the Pernosco UI and tab title")
 upload_subparser.add_argument("--url", help="Make the name a link to the given URL")
 upload_subparser.add_argument("--consent-to-current-privacy-policy", action='store_true', help="Unconditionally consent to the current privacy policy")
+upload_subparser.add_argument("--build-dir", help="Specify build directory to use as base for relative DW_AT_comp_dir")
 upload_subparser.add_argument("--no-local-sources", action='store_true', help="Don't try to upload any locally modified or generated sources")
 upload_subparser.add_argument("--substitute", metavar='LIB=WITH_PATH', action='append', default=[], help="Override the DW_AT_comp_dir for compilation units of the named library to the named path. Adds WITH_PATH to the allowed source paths. LIB must be the basename of the original name of the library, e.g. 'libc-2.32.so'.")
 upload_subparser.add_argument("--copy-sources", action='append', default=[], help="Copy sources under this directory into the recording")
@@ -525,6 +526,9 @@ def check_upload_analyze_requirements() -> None:
     if status.returncode != 65:
         print("rr is out of date. Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
         sys.exit(1)
+    if args.build_dir and not os.path.isabs(args.build_dir):
+        print("--build-dir must be an absolute path")
+        sys.exit(1)
 
 def collect_source_dirs() -> Tuple[List[str], List[str], Dict[str, str]]:
     source_dirs = []
@@ -617,7 +621,7 @@ def upload_cmd() -> None:
     packaging.rr_pack()
     packaging.package_libthread_db()
     packaging.package_extra_rr_trace_files()
-    repo_paths = sources.package_source_files(source_dirs, copy_source_dirs, comp_dir_substitutions)
+    repo_paths = sources.package_source_files(source_dirs, copy_source_dirs, comp_dir_substitutions, args.build_dir)
     sources.package_gdbinit(repo_paths, "%s/gdbinit"%args.trace_dir)
     upload(pernosco_user, pernosco_group, pernosco_user_secret_key)
 
