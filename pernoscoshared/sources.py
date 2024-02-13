@@ -345,10 +345,7 @@ def package_debuginfo_from_sources_json(rr_sources: RrSources, output_dir: str) 
         dir = "%s/debug/.dwo/"%output_dir
         for d in rr_sources['dwos']:
             if 'build_id' in d and d['build_id'] in dwps:
-                print("Skipping", file=sys.stderr)
                 continue
-            print(dwps, file=sys.stderr)
-            print(d, file=sys.stderr)
             if 'full_path' in d:
                 path = d['full_path']
             else:
