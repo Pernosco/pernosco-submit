@@ -459,12 +459,13 @@ def package_source_files_from_rr_output(allowed_source_dirs: List[str], copy_sou
 
 # The files under these paths are copied into gdbinit/
 gdb_paths: List[str] = [
-    # Mozilla
+    # Legacy .gdbinit support that was under the Mozilla heading before
     '.gdbinit',
-    '.gdbinit_python',
-    'third_party/python/gdbpp',
+    # Mozilla libs (there are .gdbinit files under OBJDIR/build but they won't work)
+    'js/src/gdb', # under the srcdir, this will trigger the custom .gdbinit below
+    'python/gdbpp', # under the srcdir
     # Chromium
-    'tools/gdb',
+    'tools/gdb', # this will trigger a different custom .gdbinit below
     'third_party/libcxx-pretty-printers',
     'third_party/blink/tools/gdb',
     'third_party/skia/tools/gdb',
@@ -487,6 +488,23 @@ def package_gdbinit(repo_paths: List[str], out_dir: str) -> None:
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
                 print("Copying tree %s into trace"%path)
                 shutil.copytree(path, out_path, copy_function=base.copy_replace_file)
+        # Install our own Pernosco-compatible .gdbinit for Gecko
+        if os.path.isfile("%s/%s/js/src/gdb/moz.build"%(out_dir, sub_path)):
+            with open("%s/%s/.gdbinit"%(out_dir, sub_path), "wt") as f:
+                f.write("""python
+import sys
+sys.path.insert(0, "/trace/gdbinit/%s/python/gdbpp/")
+sys.path.insert(0, "/trace/gdbinit/%s/js/src/gdb/")
+
+import mozilla.autoload
+mozilla.autoload.register(gdb.current_objfile())
+
+import mozilla.asmjs
+mozilla.asmjs.install()
+
+import gdbpp
+end
+"""%(sub_path, sub_path))
         # Install our own Pernosco-compatible .gdbinit for Chromium
         if os.path.isfile("%s/%s/tools/gdb/gdb_chrome.py"%(out_dir, sub_path)):
             with open("%s/%s/.gdbinit"%(out_dir, sub_path), "wt") as f:
