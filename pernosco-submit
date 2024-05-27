@@ -156,15 +156,17 @@ def check_privacy_policy_consent() -> None:
 AVX512_CPUID_EXTENDED_FEATURES_EBX = 0xdc230000
 AVX512_CPUID_EXTENDED_FEATURES_ECX = 0x00002c42
 AVX512_CPUID_EXTENDED_FEATURES_EDX = 0x0000000c
+AVX512_XCR0_MASK = 0xe0
 
-def has_banned(cpuid_records: List[List[int]]) -> List[str]:
+def has_banned(xcr0: int, cpuid_records: List[List[int]]) -> List[str]:
     bans = []
     for r in cpuid_records:
         if r[0] == 7 and r[1] == 0:
             if ((r[3] & AVX512_CPUID_EXTENDED_FEATURES_EBX) != 0 or
                 (r[4] & AVX512_CPUID_EXTENDED_FEATURES_ECX) != 0 or
                 (r[5] & AVX512_CPUID_EXTENDED_FEATURES_EDX) != 0):
-                bans.append("AVX512");
+                if xcr0 & AVX512_XCR0_MASK:
+                    bans.append("AVX512");
     return bans
 
 SENSITIVE_ENV_VARS = {
@@ -188,7 +190,7 @@ def check_trace() -> None:
     if not 'environ' in trace_info:
         print("rr is out of date. Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
         sys.exit(1)
-    banned = has_banned(trace_info['cpuidRecords'])
+    banned = has_banned(int(trace_info['xcr0']), trace_info['cpuidRecords'])
     if len(banned) > 0 and not "PERNOSCO_TEST" in os.environ:
         if len(banned) > 1:
             print("CPU features %s enabled when recording trace, but Pernosco does not support them yet."%(" and ".join(banned)), file=sys.stderr)
