@@ -219,16 +219,11 @@ def check_trace() -> None:
                 print("Re-record with environment variable unset.", file=sys.stderr)
                 sys.exit(2)
 
-def maybe_write_mozilla_metadata() -> None:
-    for firefox_bin in glob.glob("%s/mmap_*_firefox*"%args.trace_dir):
-        original_file_names = base.check_output(['rr', 'filename', firefox_bin])
-        for name in original_file_names.splitlines():
-            application_ini = "%s/application.ini"%os.path.dirname(name).decode('utf-8')
-            if os.path.isfile(application_ini):
-                base.copy_replace_file(application_ini, '%s/files.mozilla/application.ini'%args.trace_dir)
-                return
-
 def write_metadata(pernosco_user: PernoscoUser, pernosco_group: PernoscoGroup) -> None:
+    """
+    Write all metadata that depends on who is uploading the trace, or other upload-time
+    data such as the title of the trace.
+    """
     os.makedirs("%s/files.user"%args.trace_dir, exist_ok=True)
     with open('%s/files.user/user'%args.trace_dir, "wt", encoding='utf-8') as f:
         print(pernosco_user, file=f)
@@ -241,7 +236,6 @@ def write_metadata(pernosco_user: PernoscoUser, pernosco_group: PernoscoGroup) -
         print(json.dumps(metadata), file=f)
     with open('%s/files.user/group'%args.trace_dir, "wt", encoding='utf-8') as f:
         print(pernosco_group, file=f)
-    maybe_write_mozilla_metadata()
 
 def prepare_upload_data(payload_file: IO[bytes], pernosco_secret_key: PernoscoSecretKey) -> Tuple[PublicKey, Signature, Nonce]:
     """
@@ -623,6 +617,7 @@ def upload_cmd() -> None:
     packaging.rr_pack()
     packaging.package_libthread_db()
     packaging.package_extra_rr_trace_files()
+    packaging.package_mozilla_application_ini()
     repo_paths = sources.package_source_files(source_dirs, copy_source_dirs, comp_dir_substitutions, args.build_dir)
     sources.package_gdbinit(repo_paths, "%s/gdbinit"%args.trace_dir)
     upload(pernosco_user, pernosco_group, pernosco_user_secret_key)

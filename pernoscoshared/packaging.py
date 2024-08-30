@@ -42,3 +42,12 @@ def package_extra_rr_trace_files() -> None:
                 base.copy_replace_file(src_name, dest_name)
             else:
                 shutil.copytree(src_name, dest_name)
+
+def package_mozilla_application_ini() -> None:
+    for firefox_bin in glob.glob("%s/mmap_*_firefox*"%base.trace_dir):
+        original_file_names = base.check_output(['rr', 'filename', firefox_bin])
+        for name in original_file_names.splitlines():
+            application_ini = "%s/application.ini"%os.path.dirname(name).decode('utf-8')
+            if os.path.isfile(application_ini):
+                base.copy_replace_file(application_ini, '%s/files.mozilla/application.ini'%base.trace_dir)
+                return
