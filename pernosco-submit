@@ -511,10 +511,7 @@ def keygen_cmd() -> None:
     print("Private key: PERNOSCO_USER_SECRET_KEY=%s,%s"%(args.provided_secret, strip_wrapper(full_key.decode('utf-8'))))
     print("Public key: %s"%strip_wrapper(public_key))
 
-def check_upload_analyze_requirements() -> None:
-    check_executable('openssl', 'openssl')
-    check_executable('tar', 'tar')
-    check_executable('zstdmt', 'zstd')
+def check_rr() -> None:
     if not shutil.which('rr'):
         print("Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
         sys.exit(1)
@@ -522,6 +519,12 @@ def check_upload_analyze_requirements() -> None:
     if status.returncode != 65:
         print("rr is out of date. Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
         sys.exit(1)
+
+def check_upload_analyze_requirements() -> None:
+    check_executable('openssl', 'openssl')
+    check_executable('tar', 'tar')
+    check_executable('zstdmt', 'zstd')
+    check_rr()
     if args.build_dir and not os.path.isabs(args.build_dir):
         print("--build-dir must be an absolute path")
         sys.exit(1)
@@ -594,23 +597,18 @@ def check_title_and_url_args() -> None:
             print("Url must have max 1000 UTF-8 bytes", file=sys.stderr)
             exit(1)
 
-def upload_cmd() -> None:
+def package_cmd() -> None:
     base.trace_dir = args.trace_dir
-    check_upload_analyze_requirements()
-    check_for_aws_command()
+    check_rr()
 
     if args.ignore_warnings > 0:
         print("Ignoring the automated trace check (not recommended!)", file=sys.stderr)
-
-    check_title_and_url_args()
 
     if not os.path.isfile("%s/version"%args.trace_dir):
         print("Can't find rr trace in %s"%args.trace_dir, file=sys.stderr)
         sys.exit(1)
 
-
     (source_dirs, copy_source_dirs, comp_dir_substitutions) = collect_source_dirs()
-    check_privacy_policy_consent()
     check_trace()
     packaging.rr_pack()
     packaging.package_libthread_db()
@@ -618,6 +616,16 @@ def upload_cmd() -> None:
     packaging.package_mozilla_application_ini()
     repo_paths = sources.package_source_files(source_dirs, copy_source_dirs, comp_dir_substitutions, args.build_dir)
     sources.package_gdbinit(repo_paths, "%s/gdbinit"%args.trace_dir)
+
+def upload_cmd() -> None:
+    base.trace_dir = args.trace_dir
+    check_upload_analyze_requirements()
+    check_for_aws_command()
+    check_title_and_url_args()
+    check_privacy_policy_consent()
+
+    package_cmd()
+
     (pernosco_user, pernosco_group, pernosco_user_secret_key) = get_config()
     write_metadata(pernosco_user, pernosco_group)
     upload(pernosco_user, pernosco_group, pernosco_user_secret_key)
