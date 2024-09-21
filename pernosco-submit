@@ -612,14 +612,14 @@ def upload_cmd() -> None:
     (source_dirs, copy_source_dirs, comp_dir_substitutions) = collect_source_dirs()
     check_privacy_policy_consent()
     check_trace()
-    (pernosco_user, pernosco_group, pernosco_user_secret_key) = get_config()
-    write_metadata(pernosco_user, pernosco_group)
     packaging.rr_pack()
     packaging.package_libthread_db()
     packaging.package_extra_rr_trace_files()
     packaging.package_mozilla_application_ini()
     repo_paths = sources.package_source_files(source_dirs, copy_source_dirs, comp_dir_substitutions, args.build_dir)
     sources.package_gdbinit(repo_paths, "%s/gdbinit"%args.trace_dir)
+    (pernosco_user, pernosco_group, pernosco_user_secret_key) = get_config()
+    write_metadata(pernosco_user, pernosco_group)
     upload(pernosco_user, pernosco_group, pernosco_user_secret_key)
 
 def upload_package_cmd() -> None:
