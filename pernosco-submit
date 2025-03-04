@@ -72,11 +72,21 @@ upload_subparser.add_argument("--dry-run", metavar="PATH", help="Instead of uplo
 upload_subparser.add_argument("trace_dir")
 upload_subparser.add_argument("source_dirs", nargs="*")
 
-upload_package_subparser = arg_subparsers.add_parser("upload-package", help="Upload a package created using `pernosco-submit upload --dry-run` to Pernosco")
+package_subparser = arg_subparsers.add_parser("package", help="Package a trace for later submission to Pernosco")
+package_subparser.add_argument("--build-dir", help="Specify build directory to use as base for relative DW_AT_comp_dir")
+package_subparser.add_argument("--no-local-sources", action='store_true', help="Don't try to upload any locally modified or generated sources")
+package_subparser.add_argument("--substitute", metavar='LIB=WITH_PATH', action='append', default=[], help="Override the DW_AT_comp_dir for compilation units of the named library to the named path. Adds WITH_PATH to the allowed source paths. LIB must be the basename of the original name of the library, e.g. 'libc-2.32.so'.")
+package_subparser.add_argument("--copy-sources", action='append', default=[], help="Copy sources under this directory into the recording")
+package_subparser.add_argument("package_file")
+package_subparser.add_argument("trace_dir")
+package_subparser.add_argument("source_dirs", nargs="*")
+
+upload_package_subparser = arg_subparsers.add_parser("upload-package", help="Upload a package created using `pernosco-submit package` or `pernosco-submit upload --dry-run` to Pernosco")
+upload_package_subparser.add_argument("--from-dry-run", action='store_true', help="The package file was previously created using `pernosco-submit upload --dry-run`")
 upload_package_subparser.add_argument("--title", help="Display the given name in the Pernosco UI and tab title")
 upload_package_subparser.add_argument("--url", help="Make the name a link to the given URL")
 upload_package_subparser.add_argument("--consent-to-current-privacy-policy", action='store_true', help="Unconditionally consent to the current privacy policy")
-upload_package_subparser.add_argument("package", help="Name of the package file produced by `pernosco-submit upload --dry-run`")
+upload_package_subparser.add_argument("package", help="Name of the package file previously produced by `pernosco-submit`")
 
 analyze_build_subparser = arg_subparsers.add_parser("analyze-build", help="Create extra-rr-trace-files/ containing source file metadata obtained by scanning built binaries and source file repositories")
 analyze_build_subparser.add_argument("--build-dir", help="Specify build directory to use as base for relative DW_AT_comp_dir")
@@ -219,30 +229,31 @@ def check_trace() -> None:
                 print("Re-record with environment variable unset.", file=sys.stderr)
                 sys.exit(2)
 
-def write_metadata(pernosco_user: PernoscoUser, pernosco_group: PernoscoGroup) -> None:
+def write_metadata(trace_dir: str, pernosco_user: PernoscoUser, pernosco_group: PernoscoGroup) -> None:
     """
     Write all metadata that depends on who is uploading the trace, or other upload-time
     data such as the title of the trace.
     """
-    os.makedirs("%s/files.user"%args.trace_dir, exist_ok=True)
-    with open('%s/files.user/user'%args.trace_dir, "wt", encoding='utf-8') as f:
+    os.makedirs("%s/files.user"%trace_dir, exist_ok=True)
+    with open('%s/files.user/user'%trace_dir, "wt", encoding='utf-8') as f:
         print(pernosco_user, file=f)
     metadata = {}
     if args.title != None:
         metadata['title'] = args.title
     if args.url != None:
         metadata['url'] = args.url
-    with open('%s/producer-metadata'%args.trace_dir, "wt", encoding='utf-8') as f:
+    with open('%s/producer-metadata'%trace_dir, "wt", encoding='utf-8') as f:
         print(json.dumps(metadata), file=f)
-    with open('%s/files.user/group'%args.trace_dir, "wt", encoding='utf-8') as f:
+    with open('%s/files.user/group'%trace_dir, "wt", encoding='utf-8') as f:
         print(pernosco_group, file=f)
 
-def prepare_upload_data(payload_file: IO[bytes], pernosco_secret_key: PernoscoSecretKey) -> Tuple[PublicKey, Signature, Nonce]:
+def prepare_upload_data(trace_dir: str, payload_file: IO[bytes], pernosco_secret_key: PernoscoSecretKey) -> Tuple[PublicKey, Signature, Nonce]:
     """
     Create a package for uploading and return cryptographic data required to
     upload said package.
 
         Parameters:
+            trace_dir (str): The path of the trace we are processing
             payload_file (IO[bytes]): Package file to be created
             pernosco_secret_key (PernoscoSecretKey): Pernosco secret key
 
@@ -253,7 +264,7 @@ def prepare_upload_data(payload_file: IO[bytes], pernosco_secret_key: PernoscoSe
         print("-----BEGIN EC PRIVATE KEY-----\n%s\n-----END EC PRIVATE KEY-----"%pernosco_secret_key, file=key_file)
         key_file.seek(0)
         public_key = PublicKey(base.check_output(['openssl', 'ec', '-pubout'], stdin=key_file, stderr=subprocess.DEVNULL).decode('utf-8').strip())
-        p0 = base.Popen(["tar", "-I", "zstdmt", "--exclude", "./db*", "-cf", "-", "."], cwd=args.trace_dir, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        p0 = base.Popen(["tar", "-I", "zstdmt", "--exclude", "./db*", "-cf", "-", "."], cwd=trace_dir, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         assert p0.stdout
         p1 = base.Popen(["tee", payload_file.name], stdin=p0.stdout, stdout=subprocess.PIPE)
         assert p1.stdout
@@ -400,11 +411,12 @@ def split_pernosco_user_secret_key(pernosco_user_secret_key: PernoscoUserSecretK
     pernosco_secret_key = PernoscoSecretKey(parts[2])
     return (aws_access_key_id, aws_secret_access_key, pernosco_secret_key)
 
-def upload(pernosco_user: PernoscoUser, pernosco_group: PernoscoGroup, pernosco_user_secret_key: PernoscoUserSecretKey) -> None:
+def upload(trace_dir: str, pernosco_user: PernoscoUser, pernosco_group: PernoscoGroup, pernosco_user_secret_key: PernoscoUserSecretKey) -> None:
     """
     Upload a trace to Pernosco.
 
         Parameters:
+            trace_dir (str): The path of the trace we are processing
             pernosco_user (PernoscoUser): Pernosco user
             pernosco_group (PernoscoGroup): Pernosco group
             pernosco_user_secret_key (PernoscoUserSecretKey): Secret credentials required for Pernosco
@@ -412,7 +424,7 @@ def upload(pernosco_user: PernoscoUser, pernosco_group: PernoscoGroup, pernosco_
     with tempfile.NamedTemporaryFile(mode="w+b") as payload_file:
         print("Compressing to %s..."%payload_file.name)
         (aws_access_key_id, aws_secret_access_key, pernosco_secret_key) = split_pernosco_user_secret_key(pernosco_user_secret_key)
-        (public_key, signature, nonce) = prepare_upload_data(payload_file, pernosco_secret_key)
+        (public_key, signature, nonce) = prepare_upload_data(trace_dir, payload_file, pernosco_secret_key)
         metadata = get_metadata_for_upload(public_key, signature, pernosco_user, pernosco_group)
         upload_file(nonce, signature, aws_access_key_id, aws_secret_access_key, public_key,
                     pernosco_user, pernosco_group, metadata, payload_file.name)
@@ -473,9 +485,9 @@ def extract_crypto_data_from_package(package_file_name: str) -> CryptoData:
 
     return crypto_data
 
-def upload_package(pernosco_user: PernoscoUser, pernosco_group: PernoscoGroup, pernosco_user_secret_key: PernoscoUserSecretKey, package_file_name: str) -> None:
+def upload_dry_run_package(pernosco_user: PernoscoUser, pernosco_group: PernoscoGroup, pernosco_user_secret_key: PernoscoUserSecretKey, package_file_name: str) -> None:
     """
-    Upload the specified package file to Pernosco.
+    Upload the specified package file from `pernosco-submit upload --dry-run` to Pernosco.
 
         Parameters:
             pernosco_user (PernoscoUser): Pernosco user
@@ -499,6 +511,22 @@ def upload_package(pernosco_user: PernoscoUser, pernosco_group: PernoscoGroup, p
         # Add the cryptographic data required to upload the package back into the
         # package file.
         append_crypto_data_to_package(package_file_name, crypto_data)
+
+def upload_package(pernosco_user: PernoscoUser, pernosco_group: PernoscoGroup, pernosco_user_secret_key: PernoscoUserSecretKey, package_file_name: str) -> None:
+    """
+    Upload the specified package file from `pernosco-submit package` to Pernosco.
+
+        Parameters:
+            pernosco_user (PernoscoUser): Pernosco user
+            pernosco_group (PernoscoGroup): Pernosco group
+            pernosco_user_secret_key (PernoscoUserSecretKey): Secret credentials required for Pernosco
+            package_file_name (str): Name of the package file to be uploaded to Pernosco
+    """
+    with tempfile.TemporaryDirectory() as workdir:
+        print("Decompressing to %s...%s"%(workdir, package_file_name))
+        base.check_call(["tar", "-I", "zstdmt", "-xvf", package_file_name], cwd=workdir, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        write_metadata(workdir, pernosco_user, pernosco_group)
+        upload(workdir, pernosco_user, pernosco_group, pernosco_user_secret_key)
 
 def keygen_cmd() -> None:
     check_executable('openssl', 'openssl')
@@ -597,7 +625,7 @@ def check_title_and_url_args() -> None:
             print("Url must have max 1000 UTF-8 bytes", file=sys.stderr)
             exit(1)
 
-def package_cmd() -> None:
+def package() -> None:
     base.trace_dir = args.trace_dir
     check_rr()
 
@@ -624,15 +652,26 @@ def upload_cmd() -> None:
     check_title_and_url_args()
     check_privacy_policy_consent()
 
-    package_cmd()
+    package()
 
     (pernosco_user, pernosco_group, pernosco_user_secret_key) = get_config()
-    write_metadata(pernosco_user, pernosco_group)
-    upload(pernosco_user, pernosco_group, pernosco_user_secret_key)
+    write_metadata(args.trace_dir, pernosco_user, pernosco_group)
+    upload(args.trace_dir, pernosco_user, pernosco_group, pernosco_user_secret_key)
+
+def package_cmd() -> None:
+    base.trace_dir = args.trace_dir
+    check_upload_analyze_requirements()
+
+    package()
+
+    with open(args.package_file, "w+b") as package_file:
+        print("Compressing to %s..."%args.package_file)
+        base.check_call(["tar", "-I", "zstdmt", "--exclude", "./db*", "-cf", args.package_file, "."], cwd=args.trace_dir, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
 def upload_package_cmd() -> None:
     """
-    Upload a package created using `pernosco-submit upload --dry-run` to Pernosco.
+    Upload a package created using `pernosco-submit package` or
+    `pernosco-submit upload --dry-run` to Pernosco.
     """
     check_for_aws_command()
     check_title_and_url_args()
@@ -641,7 +680,10 @@ def upload_package_cmd() -> None:
     package_file_name = args.package
 
     (pernosco_user, pernosco_group, pernosco_user_secret_key) = get_config()
-    upload_package(pernosco_user, pernosco_group, pernosco_user_secret_key, package_file_name)
+    if args.from_dry_run:
+        upload_dry_run_package(pernosco_user, pernosco_group, pernosco_user_secret_key, package_file_name)
+    else:
+        upload_package(pernosco_user, pernosco_group, pernosco_user_secret_key, package_file_name)
 
 def package_source_files_extra(source_dirs: List[str], copy_source_dirs: List[str],
       comp_dir_substitutions: Dict[str, str]) -> List[str]:
@@ -661,6 +703,8 @@ def analyze_build_cmd() -> None:
 
 if args.subcommand == 'upload':
     upload_cmd()
+elif args.subcommand == 'package':
+    package_cmd()
 elif args.subcommand == 'upload-package':
     upload_package_cmd()
 elif args.subcommand == 'keygen':
