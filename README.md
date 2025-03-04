@@ -33,6 +33,19 @@ The rr trace directory will be packaged and uploaded. This may take a while and 
 
 The `--title` option lets you specify a title for the upload. This title is quoted in notification emails from Pernosco, appears in the browser tab title for a Pernosco session, and appears in the top right of the Pernosco window. The `--url` option lets you specify a URL which the title text links to.
 
+## Two-step Upload
+Run
+```
+pernosco-submit package <output-tarball> <rr-trace-dir> [<source-dir> ..]
+```
+to produce a compressed tarball containing the relevant debug info and source data. Later run
+```
+pernosco-submit upload-package [--title <string>] [--url <url>] <output-tarball>
+```
+to upload the trace to Pernosco. Together these two commands are equivalent to the `pernosco-submit upload` command above.
+
+This is intended to allow capturing rr traces in a CI setup and storing the result of `pernosco-submit package` as a CI artifact. A user can decide at a later date that the failure is interesting and finish uploading the data to Pernosco for debugging.
+
 ## Tests
 
 Ensure `git`, `hg` and [git-cinnabar](https://github.com/glandium/git-cinnabar) are installed.
