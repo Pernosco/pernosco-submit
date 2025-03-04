@@ -548,14 +548,20 @@ def check_rr() -> None:
         print("rr is out of date. Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
         sys.exit(1)
 
-def check_upload_analyze_requirements() -> None:
-    check_executable('openssl', 'openssl')
-    check_executable('tar', 'tar')
-    check_executable('zstdmt', 'zstd')
+def check_analyze_requirements() -> None:
     check_rr()
     if args.build_dir and not os.path.isabs(args.build_dir):
         print("--build-dir must be an absolute path")
         sys.exit(1)
+
+def check_package_analyze_requirements() -> None:
+    check_executable('tar', 'tar')
+    check_executable('zstdmt', 'zstd')
+    check_analyze_requirements()
+
+def check_upload_analyze_requirements() -> None:
+    check_executable('openssl', 'openssl')
+    check_package_analyze_requirements()
 
 def collect_source_dirs() -> Tuple[List[str], List[str], Dict[str, str]]:
     source_dirs = []
@@ -660,7 +666,7 @@ def upload_cmd() -> None:
 
 def package_cmd() -> None:
     base.trace_dir = args.trace_dir
-    check_upload_analyze_requirements()
+    check_package_analyze_requirements()
 
     package()
 
@@ -673,6 +679,7 @@ def upload_package_cmd() -> None:
     Upload a package created using `pernosco-submit package` or
     `pernosco-submit upload --dry-run` to Pernosco.
     """
+    check_upload_analyze_requirements()
     check_for_aws_command()
     check_title_and_url_args()
     check_privacy_policy_consent()
@@ -694,7 +701,7 @@ def package_source_files_extra(source_dirs: List[str], copy_source_dirs: List[st
     return sources.package_source_files_from_rr_output(source_dirs, copy_source_dirs, rr_output, comp_dir_substitutions, output_dir, tag, "buildid", build_dir=args.build_dir)
 
 def analyze_build_cmd() -> None:
-    check_upload_analyze_requirements()
+    check_analyze_requirements()
 
     (source_dirs, copy_source_dirs, comp_dir_substitutions) = collect_source_dirs()
 
