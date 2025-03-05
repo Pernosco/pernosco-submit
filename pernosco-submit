@@ -40,6 +40,7 @@ Signature = NewType('Signature', str)
 Nonce = NewType('Nonce', str)
 
 isAwsCliV2 = base.check_output(['aws', '--version']).decode('utf-8').startswith("aws-cli/2.")
+s3_base = "s3://pernosco-upload"
 
 class CryptoData(TypedDict):
     public_key: PublicKey
@@ -55,6 +56,7 @@ def store_positive(value: str) -> int:
 arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument("-x", dest='echo_commands', action='store_true', help="Echo spawned command lines")
 arg_parser.add_argument("--ignore-warnings", type=store_positive, default=0, help="Make the first N warnings non-fatal")
+arg_parser.add_argument("--private-instance", help="The private Pernosco instance to upload this trace to. Do not use this unless explicitly told to.")
 arg_subparsers = arg_parser.add_subparsers(dest='subcommand')
 
 keygen_subparser = arg_subparsers.add_parser("keygen", help="Generate a new public/private key pair for use with Pernosco. Only useful if someone has instructed you to use this.")
@@ -100,6 +102,8 @@ analyze_build_subparser.add_argument("binaries", nargs="*", help="Binary files t
 args = arg_parser.parse_args()
 
 base.echo_commands = args.echo_commands
+if args.private_instance:
+    s3_base = args.private_instance
 
 random.seed()
 
@@ -365,7 +369,7 @@ def upload_file(nonce: Nonce, signature: Signature, aws_access_key_id: AwsAccess
             metadata (str): Metadata required for the uplaod
             payload_file_name (str): File to be uploaded
     """
-    s3_url = "s3://pernosco-upload/%s.tar.zst"%nonce
+    s3_url = "%s/%s.tar.zst"%(s3_base, nonce)
     really = ''
     if args.subcommand == 'upload' and args.dry_run:
         really = " (not really)"
@@ -382,7 +386,10 @@ def upload_file(nonce: Nonce, signature: Signature, aws_access_key_id: AwsAccess
         checker_args.extend(["--cli-binary-format", "raw-in-base64-out"])
     checker_args.extend(["--payload", "\"publickey=%s,user=%s,group=%s\""%(strip_wrapper(public_key), pernosco_user, pernosco_group), "/dev/null"])
 
-    aws_cmd = ["aws", "s3", "cp", "--metadata", metadata, "--endpoint-url", "https://s3-accelerate.amazonaws.com", payload_file_name, s3_url]
+    aws_cmd = ["aws", "s3", "cp", "--metadata", metadata]
+    if not args.private_instance:
+        aws_cmd.extend(["--endpoint-url", "https://s3-accelerate.amazonaws.com"])
+    aws_cmd.extend([payload_file_name, s3_url])
 
     if args.subcommand == 'upload' and args.dry_run:
         base.check_call(["cp", payload_file_name, args.dry_run])
