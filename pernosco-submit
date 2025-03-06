@@ -101,7 +101,7 @@ def check_executable(executable: str, package: str) -> None:
 
 # Fetch current privacy policy version (or None if we fail to get it)
 def fetch_privacy_policy_version() -> Optional[int]:
-    version_re = re.compile(b'<meta name="policy-version" content="(\d+)">')
+    version_re = re.compile(b'<meta name="policy-version" content="(\\d+)">')
     try:
         content = urllib.request.urlopen('https://pernos.co/privacy', timeout=30)
         for line in content.readlines():
