@@ -97,12 +97,12 @@ def submit_dry_run(title='FAKE TITLE', url='FAKE_ñ_URL', prefer_env_vars=True):
 def validate_dry_run(title="FAKE%20TITLE", url="FAKE_%C3%B1_URL"):
     with open('%s/dry-run.cmd'%tmpdir) as f:
         cmd_obj = json.loads(f.read())
-    aws_cmd = cmd_obj['aws_cmd']
-    assert aws_cmd[0] == 'aws'
-    assert aws_cmd[1] == 's3'
-    assert aws_cmd[2] == 'cp'
-    assert aws_cmd[3] == '--metadata'
-    metadata = aws_cmd[4].split(',')
+    upload_cmd = cmd_obj['upload_cmd']
+    assert upload_cmd[0] == 'aws'
+    assert upload_cmd[1] == 's3'
+    assert upload_cmd[2] == 'cp'
+    assert upload_cmd[3] == '--metadata'
+    metadata = upload_cmd[4].split(',')
     assert metadata[0] == "publickey=%s"%public_key
     assert metadata[1].startswith("signature=")
     assert metadata[2] == "user=pernosco-submit-test@pernos.co"
@@ -115,18 +115,18 @@ def validate_dry_run(title="FAKE%20TITLE", url="FAKE_%C3%B1_URL"):
         assert metadata[expect_metadata_len] == "url=%s"%url
         expect_metadata_len += 1
     assert len(metadata) == expect_metadata_len
-    if aws_cmd[5] == "--endpoint-url":
-        assert aws_cmd[6].startswith("https://s3-accelerate.amazonaws.com")
-        assert not os.path.exists(aws_cmd[7]) # temp file should have been cleaned up
-        assert aws_cmd[8].endswith(".tar.zst")
+    if upload_cmd[5] == "--endpoint-url":
+        assert upload_cmd[6].startswith("https://s3-accelerate.amazonaws.com")
+        assert not os.path.exists(upload_cmd[7]) # temp file should have been cleaned up
+        assert upload_cmd[8].endswith(".tar.zst")
     else:
-        assert not os.path.exists(aws_cmd[5]) # temp file should have been cleaned up
-        assert aws_cmd[6].startswith("s3://pernosco-upload/")
-        assert aws_cmd[6].endswith(".tar.zst")
-    aws_env = cmd_obj['aws_env']
-    assert aws_env['AWS_DEFAULT_REGION'] == 'us-east-2'
-    assert aws_env['AWS_ACCESS_KEY_ID'] == 'FAKE_KEY_ID'
-    assert aws_env['AWS_SECRET_ACCESS_KEY'] == 'FAKE_CRED'
+        assert not os.path.exists(upload_cmd[5]) # temp file should have been cleaned up
+        assert upload_cmd[6].startswith("s3://pernosco-upload/")
+        assert upload_cmd[6].endswith(".tar.zst")
+    cloud_env = cmd_obj['cloud_env']
+    assert cloud_env['AWS_DEFAULT_REGION'] == 'us-east-2'
+    assert cloud_env['AWS_ACCESS_KEY_ID'] == 'FAKE_KEY_ID'
+    assert cloud_env['AWS_SECRET_ACCESS_KEY'] == 'FAKE_CRED'
 
 def validate_producer_metadata(title='FAKE TITLE', url='FAKE_ñ_URL'):
     with open('%s/producer-metadata'%trace_dir) as f:

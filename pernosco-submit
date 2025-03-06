@@ -28,24 +28,9 @@ import urllib.request
 import pernoscoshared.base as base
 import pernoscoshared.packaging as packaging
 import pernoscoshared.sources as sources
+from pernoscoshared.cloud import *
 
-AwsAccessKeyId = NewType('AwsAccessKeyId', str)
-AwsSecretAccessKey = NewType('AwsSecretAccessKey', str)
-PernoscoUser = NewType('PernoscoUser', str)
-PernoscoGroup = NewType('PernoscoGroup', str)
-PernoscoSecretKey = NewType('PernoscoSecretKey', str)
-PernoscoUserSecretKey = NewType('PernoscoUserSecretKey', str)
-PublicKey = NewType('PublicKey', str)
-Signature = NewType('Signature', str)
-Nonce = NewType('Nonce', str)
-
-isAwsCliV2 = base.check_output(['aws', '--version']).decode('utf-8').startswith("aws-cli/2.")
 s3_base = "s3://pernosco-upload"
-
-class CryptoData(TypedDict):
-    public_key: PublicKey
-    signature: Signature
-    nonce: Nonce
 
 def store_positive(value: str) -> int:
     i = int(value)
@@ -101,19 +86,13 @@ analyze_build_subparser.add_argument("binaries", nargs="*", help="Binary files t
 
 args = arg_parser.parse_args()
 
+import pernoscoshared.cloud.aws as cloud
+
 base.echo_commands = args.echo_commands
 if args.private_instance:
     s3_base = args.private_instance
 
 random.seed()
-
-def strip_wrapper(s: str) -> str:
-    ret = ""
-    for line in s.splitlines():
-        if line.startswith("----"):
-            continue
-        ret += line.strip()
-    return ret
 
 def check_executable(executable: str, package: str) -> None:
     if not shutil.which(executable):
@@ -293,25 +272,6 @@ def prepare_upload_data(trace_dir: str, payload_file: IO[bytes], pernosco_secret
     nonce = Nonce(base64.urlsafe_b64encode(hasher.digest()[:8]).decode('utf-8').rstrip('=').strip())
     return (public_key, signature, nonce)
 
-def get_aws_environment(aws_access_key_id: AwsAccessKeyId, aws_secret_access_key: AwsSecretAccessKey) -> Dict[str, str]:
-    """
-    Return a dictionary with current environment variables plus AWS access
-    credentials.
-
-        Parameters:
-            aws_access_key_id (AwsAccessKeyId): AWS access key ID
-            aws_secret_access_key (AwsSecretAccessKey): AWS secret access key
-
-        Returns:
-            Dictionary with current environment variables plus AWS access
-            credentials.
-    """
-    aws_env = dict(os.environ,
-        AWS_DEFAULT_REGION='us-east-2',
-        AWS_ACCESS_KEY_ID=aws_access_key_id,
-        AWS_SECRET_ACCESS_KEY=aws_secret_access_key)
-    return aws_env
-
 def get_metadata_for_upload(public_key: PublicKey, signature: Signature, pernosco_user: PernoscoUser, pernosco_group: PernoscoGroup) -> str:
     """
     Return metadata required for uploading a package to Pernosco.
@@ -352,8 +312,7 @@ def append_crypto_data_to_package(package_file_name: str, crypto_data: CryptoDat
         print(crypto_data_json, file=package_file)
         print("%d"%len(crypto_data_json), end="", file=package_file)
 
-def upload_file(nonce: Nonce, signature: Signature, aws_access_key_id: AwsAccessKeyId,
-        aws_secret_access_key: AwsSecretAccessKey, public_key: PublicKey,
+def upload_file(nonce: Nonce, signature: Signature, cloud_env: Dict[str, str], public_key: PublicKey,
         pernosco_user: PernoscoUser, pernosco_group: PernoscoGroup, metadata: str, payload_file_name: str) -> None:
     """
     Upload the specified payload file to Pernosco.
@@ -361,8 +320,8 @@ def upload_file(nonce: Nonce, signature: Signature, aws_access_key_id: AwsAccess
         Parameters:
             nonce (Nonce): Nonce for uploaded file name
             signature (Signature): Message digest for the package to be uploaded
-            aws_access_key_id (AwsAccessKeyId): AWS access key ID
-            aws_secret_access_key (AwsSecretAccessKey): AWS secret access key
+            cloud_env (Dict[str, str]): The environment to launch the cloud tools in
+                                        (e.g. os.environ with AWS_ACCESS_KEY_ID/etc added)
             public_key (PublicKey): Public key for Pernosco user
             pernosco_user (PernoscoUser): Pernosco user
             pernosco_group (PernoscoGroup): Pernosco group
@@ -375,25 +334,12 @@ def upload_file(nonce: Nonce, signature: Signature, aws_access_key_id: AwsAccess
         really = " (not really)"
     print("Uploading %d bytes to %s...%s"%(os.path.getsize(payload_file_name), s3_url, really))
 
-    aws_env = get_aws_environment(aws_access_key_id, aws_secret_access_key)
-
-    checker_args = ["aws", "lambda", "invoke", "--function-name", "upload-credential-check", "--qualifier"]
-    if 'PERNOSCO_CREDENTIAL_CHECKER' in os.environ:
-        checker_args.extend([os.environ['PERNOSCO_CREDENTIAL_CHECKER']])
-    else:
-        checker_args.extend(["PROD"])
-    if isAwsCliV2:
-        checker_args.extend(["--cli-binary-format", "raw-in-base64-out"])
-    checker_args.extend(["--payload", "\"publickey=%s,user=%s,group=%s\""%(strip_wrapper(public_key), pernosco_user, pernosco_group), "/dev/null"])
-
-    aws_cmd = ["aws", "s3", "cp", "--metadata", metadata]
-    if not args.private_instance:
-        aws_cmd.extend(["--endpoint-url", "https://s3-accelerate.amazonaws.com"])
-    aws_cmd.extend([payload_file_name, s3_url])
+    checker_cmd = cloud.check_credentials_cmd(public_key, pernosco_user, pernosco_group)
+    upload_cmd = cloud.upload_file_cmd(s3_url, payload_file_name, metadata, transferAcceleration=not args.private_instance)
 
     if args.subcommand == 'upload' and args.dry_run:
         base.check_call(["cp", payload_file_name, args.dry_run])
-        cmd_obj = dict(checker_cmd=checker_args, aws_cmd=aws_cmd, aws_env=aws_env)
+        cmd_obj = dict(checker_cmd=checker_cmd, upload_cmd=upload_cmd, cloud_env=cloud_env)
         with open("%s.cmd"%args.dry_run, "w") as cmd:
             print(json.dumps(cmd_obj), file=cmd)
 
@@ -405,18 +351,11 @@ def upload_file(nonce: Nonce, signature: Signature, aws_access_key_id: AwsAccess
         append_crypto_data_to_package(args.dry_run, crypto_data)
     else:
         # Check our credentials before proceeding further.
-        p3 = base.Popen(checker_args, env=aws_env, stdout=subprocess.PIPE)
+        p3 = base.Popen(checker_cmd, env=cloud_env, stdout=subprocess.PIPE)
         check_result = p3.communicate()[0].decode("utf-8")
         if check_result.find("Unhandled") != -1:
             raise base.CustomException("Your upload credentials are not valid. Check them and try again.")
-        base.check_call(aws_cmd, env=aws_env)
-
-def split_pernosco_user_secret_key(pernosco_user_secret_key: PernoscoUserSecretKey) -> Tuple[AwsAccessKeyId, AwsSecretAccessKey, PernoscoSecretKey]:
-    parts = pernosco_user_secret_key.split(',')
-    aws_access_key_id = AwsAccessKeyId(parts[0])
-    aws_secret_access_key = AwsSecretAccessKey(parts[1])
-    pernosco_secret_key = PernoscoSecretKey(parts[2])
-    return (aws_access_key_id, aws_secret_access_key, pernosco_secret_key)
+        base.check_call(upload_cmd, env=cloud_env)
 
 def upload(trace_dir: str, pernosco_user: PernoscoUser, pernosco_group: PernoscoGroup, pernosco_user_secret_key: PernoscoUserSecretKey) -> None:
     """
@@ -430,10 +369,10 @@ def upload(trace_dir: str, pernosco_user: PernoscoUser, pernosco_group: Pernosco
     """
     with tempfile.NamedTemporaryFile(mode="w+b") as payload_file:
         print("Compressing to %s..."%payload_file.name)
-        (aws_access_key_id, aws_secret_access_key, pernosco_secret_key) = split_pernosco_user_secret_key(pernosco_user_secret_key)
+        (cloud_env, pernosco_secret_key) = cloud.prep_env_with_user_secret_key(pernosco_user_secret_key)
         (public_key, signature, nonce) = prepare_upload_data(trace_dir, payload_file, pernosco_secret_key)
         metadata = get_metadata_for_upload(public_key, signature, pernosco_user, pernosco_group)
-        upload_file(nonce, signature, aws_access_key_id, aws_secret_access_key, public_key,
+        upload_file(nonce, signature, cloud_env, public_key,
                     pernosco_user, pernosco_group, metadata, payload_file.name)
 
 def extract_crypto_data_from_package(package_file_name: str) -> CryptoData:
@@ -509,10 +448,10 @@ def upload_dry_run_package(pernosco_user: PernoscoUser, pernosco_group: Pernosco
     (public_key, signature, nonce) = crypto_data["public_key"], crypto_data["signature"], crypto_data["nonce"]
 
     metadata = get_metadata_for_upload(public_key, signature, pernosco_user, pernosco_group)
-    (aws_access_key_id, aws_secret_access_key, pernosco_secret_key) = split_pernosco_user_secret_key(pernosco_user_secret_key)
+    (cloud_env, pernosco_secret_key) = cloud.prep_env_with_user_secret_key(pernosco_user_secret_key)
 
     try:
-        upload_file(nonce, signature, aws_access_key_id, aws_secret_access_key, public_key, pernosco_user,
+        upload_file(nonce, signature, cloud_env, public_key, pernosco_user,
             pernosco_group, metadata, package_file_name)
     finally:
         # Add the cryptographic data required to upload the package back into the
@@ -540,10 +479,11 @@ def keygen_cmd() -> None:
 
     if len(args.provided_secret.split(',')) != 2:
         print("Invalid <provided-secret> argument", file=sys.stderr)
-    full_key = base.check_output(['openssl', 'ecparam', '-genkey', '-name', 'prime256v1', '-noout'])
+    full_key_out = base.check_output(['openssl', 'ecparam', '-genkey', '-name', 'prime256v1', '-noout'])
     base.maybe_echo(['openssl', 'ec', '-pubout'])
-    public_key = subprocess.check_output(['openssl', 'ec', '-pubout'], input=full_key, stderr=subprocess.DEVNULL).decode('utf-8')
-    print("Private key: PERNOSCO_USER_SECRET_KEY=%s,%s"%(args.provided_secret, strip_wrapper(full_key.decode('utf-8'))))
+    public_key = PublicKey(subprocess.check_output(['openssl', 'ec', '-pubout'], input=full_key_out, stderr=subprocess.DEVNULL).decode('utf-8'))
+    full_key = PublicKey(full_key_out.decode('utf-8'))
+    print("Private key: PERNOSCO_USER_SECRET_KEY=%s,%s"%(args.provided_secret, strip_wrapper(full_key)))
     print("Public key: %s"%strip_wrapper(public_key))
 
 def check_rr() -> None:
@@ -615,16 +555,6 @@ def get_config() -> Tuple[PernoscoUser, PernoscoGroup, PernoscoUserSecretKey]:
     pernosco_user_secret_key = PernoscoUserSecretKey(get_config_var('user_secret_key'))
     return (pernosco_user, pernosco_group, pernosco_user_secret_key)
 
-def check_for_aws_command() -> None:
-    """
-    Check that the `aws' command-line tools are installed.
-    """
-    if not shutil.which('aws'):
-        print("Please install the AWS command-line tools using", file=sys.stderr)
-        print("  sudo pip3 install awscli --upgrade", file=sys.stderr)
-        print("(Distribution packages may fail due to https://github.com/aws/aws-cli/issues/2403.)", file=sys.stderr)
-        sys.exit(1)
-
 def check_title_and_url_args() -> None:
     """
     Check that --title and --url command-line arguments are valid.
@@ -661,7 +591,7 @@ def package() -> None:
 def upload_cmd() -> None:
     base.trace_dir = args.trace_dir
     check_upload_analyze_requirements()
-    check_for_aws_command()
+    cloud.check_for_command()
     check_title_and_url_args()
     check_privacy_policy_consent()
 
@@ -687,7 +617,7 @@ def upload_package_cmd() -> None:
     `pernosco-submit upload --dry-run` to Pernosco.
     """
     check_upload_analyze_requirements()
-    check_for_aws_command()
+    cloud.check_for_command()
     check_title_and_url_args()
     check_privacy_policy_consent()
 
