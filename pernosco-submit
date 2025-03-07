@@ -30,6 +30,20 @@ import pernoscoshared.packaging as packaging
 import pernoscoshared.sources as sources
 from pernoscoshared.cloud import *
 
+class Config(TypedDict):
+    """
+    user (PernoscoUser): Pernosco user
+    """
+    user: PernoscoUser
+    """
+    pernosco_group (PernoscoGroup): Pernosco group
+    """
+    group: PernoscoGroup
+    """
+    pernosco_user_secret_key (PernoscoUserSecretKey): Secret credentials required for Pernosco
+    """
+    user_secret_key: PernoscoUserSecretKey
+
 s3_base = "s3://pernosco-upload"
 
 def store_positive(value: str) -> int:
@@ -386,23 +400,21 @@ def upload_file(nonce: Nonce, signature: Signature, cloud_env: Dict[str, str], p
             raise base.CustomException("Your upload credentials are not valid. Check them and try again.")
         base.check_call(upload_cmd, env=cloud_env)
 
-def upload(trace_dir: str, pernosco_user: PernoscoUser, pernosco_group: PernoscoGroup, pernosco_user_secret_key: PernoscoUserSecretKey) -> None:
+def upload(trace_dir: str, config: Config) -> None:
     """
     Upload a trace to Pernosco.
 
         Parameters:
             trace_dir (str): The path of the trace we are processing
-            pernosco_user (PernoscoUser): Pernosco user
-            pernosco_group (PernoscoGroup): Pernosco group
-            pernosco_user_secret_key (PernoscoUserSecretKey): Secret credentials required for Pernosco
+            config (Config): The Pernosco config
     """
     with tempfile.NamedTemporaryFile(mode="w+b") as payload_file:
         print("Compressing to %s..."%payload_file.name)
-        (cloud_env, pernosco_secret_key) = cloud.prep_env_with_user_secret_key(pernosco_user_secret_key)
+        (cloud_env, pernosco_secret_key) = cloud.prep_env_with_user_secret_key(config["user_secret_key"])
         (public_key, signature, nonce) = prepare_upload_data(trace_dir, payload_file, pernosco_secret_key)
-        metadata = get_metadata_for_upload(public_key, signature, pernosco_user, pernosco_group)
+        metadata = get_metadata_for_upload(public_key, signature, config["user"], config["group"])
         upload_file(nonce, signature, cloud_env, public_key,
-                    pernosco_user, pernosco_group, metadata, payload_file.name)
+                    config["user"], config["group"], metadata, payload_file.name)
 
 def extract_crypto_data_from_package(package_file_name: str) -> CryptoData:
     """
@@ -460,14 +472,12 @@ def extract_crypto_data_from_package(package_file_name: str) -> CryptoData:
 
     return crypto_data
 
-def upload_dry_run_package(pernosco_user: PernoscoUser, pernosco_group: PernoscoGroup, pernosco_user_secret_key: PernoscoUserSecretKey, package_file_name: str) -> None:
+def upload_dry_run_package(config: Config, package_file_name: str) -> None:
     """
     Upload the specified package file from `pernosco-submit upload --dry-run` to Pernosco.
 
         Parameters:
-            pernosco_user (PernoscoUser): Pernosco user
-            pernosco_group (PernoscoGroup): Pernosco group
-            pernosco_user_secret_key (PernoscoUserSecretKey): Secret credentials required for Pernosco
+            config (Config): The Pernosco config
             package_file_name (str): Name of the package file to be uploaded to Pernosco
     """
     # Extract cryptographic data required to upload the package from the
@@ -476,32 +486,30 @@ def upload_dry_run_package(pernosco_user: PernoscoUser, pernosco_group: Pernosco
     crypto_data = extract_crypto_data_from_package(package_file_name)
     (public_key, signature, nonce) = crypto_data["public_key"], crypto_data["signature"], crypto_data["nonce"]
 
-    metadata = get_metadata_for_upload(public_key, signature, pernosco_user, pernosco_group)
-    (cloud_env, pernosco_secret_key) = cloud.prep_env_with_user_secret_key(pernosco_user_secret_key)
+    metadata = get_metadata_for_upload(public_key, signature, config["user"], config["group"])
+    (cloud_env, pernosco_secret_key) = cloud.prep_env_with_user_secret_key(config["user_secret_key"])
 
     try:
-        upload_file(nonce, signature, cloud_env, public_key, pernosco_user,
-            pernosco_group, metadata, package_file_name)
+        upload_file(nonce, signature, cloud_env, public_key, config["user"], config["group"],
+                    metadata, package_file_name)
     finally:
         # Add the cryptographic data required to upload the package back into the
         # package file.
         append_crypto_data_to_package(package_file_name, crypto_data)
 
-def upload_package(pernosco_user: PernoscoUser, pernosco_group: PernoscoGroup, pernosco_user_secret_key: PernoscoUserSecretKey, package_file_name: str) -> None:
+def upload_package(config: Config, package_file_name: str) -> None:
     """
     Upload the specified package file from `pernosco-submit package` to Pernosco.
 
         Parameters:
-            pernosco_user (PernoscoUser): Pernosco user
-            pernosco_group (PernoscoGroup): Pernosco group
-            pernosco_user_secret_key (PernoscoUserSecretKey): Secret credentials required for Pernosco
+            config: The Pernosco config
             package_file_name (str): Name of the package file to be uploaded to Pernosco
     """
     with tempfile.TemporaryDirectory() as workdir:
         print("Decompressing to %s...%s"%(workdir, package_file_name))
         base.check_call(["tar", "-I", "zstdmt", "-xvf", package_file_name], cwd=workdir, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-        write_metadata(workdir, pernosco_user, pernosco_group)
-        upload(workdir, pernosco_user, pernosco_group, pernosco_user_secret_key)
+        write_metadata(workdir, config["user"], config["group"])
+        upload(workdir, config)
 
 def keygen_cmd() -> None:
     check_executable('openssl', 'openssl')
@@ -578,11 +586,12 @@ def get_config_var(name: str) -> str:
     print("Can't find %s or ~/.config/pernosco/%s"%(env_var, name), file=sys.stderr)
     sys.exit(1)
 
-def get_config() -> Tuple[PernoscoUser, PernoscoGroup, PernoscoUserSecretKey]:
-    pernosco_user = PernoscoUser(get_config_var('user'))
-    pernosco_group = PernoscoGroup(get_config_var('group'))
-    pernosco_user_secret_key = PernoscoUserSecretKey(get_config_var('user_secret_key'))
-    return (pernosco_user, pernosco_group, pernosco_user_secret_key)
+def get_config() -> Config:
+    return {
+        "user": PernoscoUser(get_config_var('user')),
+        "group": PernoscoGroup(get_config_var('group')),
+        "user_secret_key": PernoscoUserSecretKey(get_config_var('user_secret_key'))
+    }
 
 def check_title_and_url_args() -> None:
     """
@@ -626,9 +635,9 @@ def upload_cmd() -> None:
 
     package()
 
-    (pernosco_user, pernosco_group, pernosco_user_secret_key) = get_config()
-    write_metadata(args.trace_dir, pernosco_user, pernosco_group)
-    upload(args.trace_dir, pernosco_user, pernosco_group, pernosco_user_secret_key)
+    config = get_config()
+    write_metadata(args.trace_dir, config["user"], config["group"])
+    upload(args.trace_dir, config)
 
 def package_cmd() -> None:
     base.trace_dir = args.trace_dir
@@ -652,11 +661,11 @@ def upload_package_cmd() -> None:
 
     package_file_name = args.package
 
-    (pernosco_user, pernosco_group, pernosco_user_secret_key) = get_config()
+    config = get_config()
     if args.from_dry_run:
-        upload_dry_run_package(pernosco_user, pernosco_group, pernosco_user_secret_key, package_file_name)
+        upload_dry_run_package(config, package_file_name)
     else:
-        upload_package(pernosco_user, pernosco_group, pernosco_user_secret_key, package_file_name)
+        upload_package(config, package_file_name)
 
 def package_source_files_extra(source_dirs: List[str], copy_source_dirs: List[str],
       comp_dir_substitutions: Dict[str, str]) -> List[str]:
