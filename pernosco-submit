@@ -114,6 +114,8 @@ def fetch_privacy_policy_version() -> Optional[int]:
     return None
 
 def check_privacy_policy_consent() -> None:
+    if args.private_instance:
+        return
     if args.consent_to_current_privacy_policy:
         return
     policy_version = fetch_privacy_policy_version()
