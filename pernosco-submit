@@ -212,6 +212,23 @@ def check_trace() -> None:
                 print("Re-record with environment variable unset.", file=sys.stderr)
                 sys.exit(2)
 
+def compress_trace(trace_dir: str, output_file: str = "-") -> subprocess.Popen[bytes]:
+    """
+    Start a process to compress the trace, either to the output file (for standalone
+    packaging) or to stdout (for piping to openssl).
+
+        Parameters:
+            trace_dir (str): The path of the trace we are processing
+            output_file (str): If specified, the file to write the compressed trace to.
+                               If unspecified, the default value writes the compressed
+                               data to stdout.
+
+        Return:
+            The running subprocess (that must be waited on) compressing the trace.
+    """
+    return base.Popen(["tar", "-I", "zstdmt", "--exclude", "./db*", "-cf", output_file, "."],
+                      cwd=trace_dir, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
 def write_metadata(trace_dir: str, pernosco_user: PernoscoUser, pernosco_group: PernoscoGroup) -> None:
     """
     Write all metadata that depends on who is uploading the trace, or other upload-time
@@ -230,6 +247,16 @@ def write_metadata(trace_dir: str, pernosco_user: PernoscoUser, pernosco_group: 
     with open('%s/files.user/group'%trace_dir, "wt", encoding='utf-8') as f:
         print(pernosco_group, file=f)
 
+def prepare_upload_data_no_sign(trace_dir: str, payload_file: IO[bytes]) -> None:
+    with compress_trace(trace_dir, payload_file.name) as p:
+        try:
+            p.wait()
+            if p.returncode != 0:
+                raise base.CustomException("tar failed: %d"%p.returncode)
+        except:
+            p.kill()
+            raise base.CustomException("tar failed")
+
 def prepare_upload_data(trace_dir: str, payload_file: IO[bytes], pernosco_secret_key: PernoscoSecretKey) -> Tuple[PublicKey, Signature, Nonce]:
     """
     Create a package for uploading and return cryptographic data required to
@@ -247,7 +274,7 @@ def prepare_upload_data(trace_dir: str, payload_file: IO[bytes], pernosco_secret
         print("-----BEGIN EC PRIVATE KEY-----\n%s\n-----END EC PRIVATE KEY-----"%pernosco_secret_key, file=key_file)
         key_file.seek(0)
         public_key = PublicKey(base.check_output(['openssl', 'ec', '-pubout'], stdin=key_file, stderr=subprocess.DEVNULL).decode('utf-8').strip())
-        p0 = base.Popen(["tar", "-I", "zstdmt", "--exclude", "./db*", "-cf", "-", "."], cwd=trace_dir, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        p0 = compress_trace(trace_dir)
         assert p0.stdout
         p1 = base.Popen(["tee", payload_file.name], stdin=p0.stdout, stdout=subprocess.PIPE)
         assert p1.stdout
@@ -609,7 +636,7 @@ def package_cmd() -> None:
 
     with open(args.package_file, "w+b") as package_file:
         print("Compressing to %s..."%args.package_file)
-        base.check_call(["tar", "-I", "zstdmt", "--exclude", "./db*", "-cf", args.package_file, "."], cwd=args.trace_dir, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        prepare_upload_data_no_sign(args.trace_dir, package_file)
 
 def upload_package_cmd() -> None:
     """
