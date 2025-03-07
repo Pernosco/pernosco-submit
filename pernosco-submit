@@ -607,7 +607,6 @@ def check_title_and_url_args() -> None:
             exit(1)
 
 def package() -> None:
-    base.trace_dir = args.trace_dir
     check_rr()
 
     if args.ignore_warnings > 0:
@@ -640,6 +639,14 @@ def upload_cmd() -> None:
     upload(args.trace_dir, config)
 
 def package_cmd() -> None:
+    """
+    Produce a package that can be uploaded later with `pernosco submit upload-package`.
+    This is intended to capture everything needed from the system the trace was recorded
+    on such as symbols and sources, but not require any credentials needed to talk to
+    the Pernosco server.
+
+    Requires: tar, zstdmt, rr
+    """
     base.trace_dir = args.trace_dir
     check_package_analyze_requirements()
 
