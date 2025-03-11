@@ -1,12 +1,12 @@
 from __future__ import annotations
-from typing import Dict, List, Union, Tuple, NewType, TYPE_CHECKING
+from typing import Dict, List, Optional, Union, Tuple, NewType, TYPE_CHECKING
 
 import os
 import shutil
 import sys
 
 import pernoscoshared.base as base
-from . import PublicKey, PernoscoUser, PernoscoGroup, PernoscoSecretKey, PernoscoUserSecretKey, strip_wrapper
+from . import PublicKey, PernoscoUser, PernoscoGroup, PernoscoSecretKey, PernoscoUserSecretKey, Config, strip_wrapper
 
 isAwsCliV2 = base.check_output(['aws', '--version']).decode('utf-8').startswith("aws-cli/2.")
 
@@ -28,18 +28,22 @@ def check_for_command() -> None:
         print("(Distribution packages may fail due to https://github.com/aws/aws-cli/issues/2403.)", file=sys.stderr)
         sys.exit(1)
 
-def prep_env_with_user_secret_key(pernosco_user_secret_key: PernoscoUserSecretKey) -> Tuple[Dict[str, str], PernoscoSecretKey]:
+def prep_env_with_config(config: Config) -> Tuple[Dict[str, str], Optional[PernoscoSecretKey]]:
     """
     Return a dictionary with current environment variables plus AWS access
-    credentials, and the PernoscoSecretKey.
+    credentials, and the PernoscoSecretKey, if present.
 
         Parameters:
-            pernosco_user_secret_key: The PernoscoUserSecretKey
+            config: The Pernosco tool config.
 
         Returns:
-            Dictionary with current environment variables plus AWS access
-            credentials, and the PernoscoSecretKey.
+            Dictionary with current environment variables plus, if applicable,
+            AWS access, and the PernoscoSecretKey.
     """
+    if config["user_secret_key"] is None:
+        return (dict(os.environ), None)
+
+    pernosco_user_secret_key = config["user_secret_key"]
     parts = pernosco_user_secret_key.split(',')
     aws_access_key_id = AwsAccessKeyId(parts[0])
     aws_secret_access_key = AwsSecretAccessKey(parts[1])

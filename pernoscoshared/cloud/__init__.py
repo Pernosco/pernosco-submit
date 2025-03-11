@@ -1,4 +1,7 @@
-from typing import NewType, TypedDict
+from typing import NewType, Optional, TypedDict
+
+import os
+import sys
 
 PernoscoUser = NewType('PernoscoUser', str)
 PernoscoGroup = NewType('PernoscoGroup', str)
@@ -7,6 +10,20 @@ PernoscoUserSecretKey = NewType('PernoscoUserSecretKey', str)
 PublicKey = NewType('PublicKey', str)
 Signature = NewType('Signature', str)
 Nonce = NewType('Nonce', str)
+
+class Config(TypedDict):
+    """
+    user (PernoscoUser): Pernosco user
+    """
+    user: PernoscoUser
+    """
+    pernosco_group (PernoscoGroup): Pernosco group
+    """
+    group: PernoscoGroup
+    """
+    pernosco_user_secret_key (PernoscoUserSecretKey): Secret credentials required for Pernosco
+    """
+    user_secret_key: Optional[PernoscoUserSecretKey]
 
 class CryptoData(TypedDict):
     public_key: PublicKey
@@ -20,3 +37,42 @@ def strip_wrapper(s: PublicKey) -> str:
             continue
         ret += line.strip()
     return ret
+
+def get_config_var_allow_missing(name: str) -> Optional[str]:
+    env_var = "PERNOSCO_%s"%(name.upper())
+    if env_var in os.environ:
+        return os.environ[env_var]
+    if 'HOME' in os.environ:
+        path = "%s/.config/pernosco/%s"%(os.environ['HOME'], name)
+        try:
+            with open(path, "r") as file:
+                return file.read().replace('\n', '')
+        except:
+            pass
+    return None
+
+def get_config_var(name: str) -> str:
+    var = get_config_var_allow_missing(name)
+    if var is None:
+        env_var = "PERNOSCO_%s"%(name.upper())
+        print("Can't find %s or ~/.config/pernosco/%s"%(env_var, name), file=sys.stderr)
+        sys.exit(1)
+
+    return var
+
+def get_config(require_user_secret_key: bool = True) -> Config:
+    user = PernoscoUser(get_config_var('user'))
+    group = PernoscoGroup(get_config_var('group'))
+    if require_user_secret_key:
+        user_secret_key = PernoscoUserSecretKey(get_config_var('user_secret_key'))
+    else:
+        config_var = get_config_var_allow_missing('user_secret_key')
+        if config_var is None:
+            user_secret_key = None
+        else:
+            user_secret_key = PernoscoUserSecretKey(config_var)
+    return {
+        "user": user,
+        "group": group,
+        "user_secret_key": user_secret_key,
+    }
