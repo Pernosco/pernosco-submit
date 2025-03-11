@@ -30,7 +30,7 @@ import pernoscoshared.packaging as packaging
 import pernoscoshared.sources as sources
 from pernoscoshared.cloud import *
 
-s3_base = "s3://pernosco-upload"
+PUBLIC_PERNOSCO_INSTANCE = "s3://pernosco-upload"
 
 def store_positive(value: str) -> int:
     i = int(value)
@@ -86,11 +86,19 @@ analyze_build_subparser.add_argument("binaries", nargs="*", help="Binary files t
 
 args = arg_parser.parse_args()
 
-import pernoscoshared.cloud.aws as cloud
-
 base.echo_commands = args.echo_commands
+
 if args.private_instance:
-    s3_base = args.private_instance
+    cloud_base = args.private_instance
+else:
+    cloud_base = PUBLIC_PERNOSCO_INSTANCE
+
+# Slightly awkward, but mypy is much happier if it sees the AWS cloud impl
+# (which has many more features and function keyword arguments).
+if not cloud_base.startswith("gs://"):
+    import pernoscoshared.cloud.aws as cloud
+else:
+    import pernoscoshared.cloud.gcloud as cloud # type: ignore[no-redef]
 
 random.seed()
 
@@ -372,13 +380,13 @@ def upload_file(cloud_env: Dict[str, str], crypto_data: Optional[CryptoData],
         nonce = crypto_data["nonce"]
         checker_cmd = cloud.check_credentials_cmd(crypto_data["public_key"], pernosco_user, pernosco_group)
 
-    s3_url = "%s/%s.tar.zst"%(s3_base, nonce)
+    cloud_url = "%s/%s.tar.zst"%(cloud_base, nonce)
     really = ''
     if args.subcommand == 'upload' and args.dry_run:
         really = " (not really)"
-    print("Uploading %d bytes to %s...%s"%(os.path.getsize(payload_file_name), s3_url, really))
+    print("Uploading %d bytes to %s...%s"%(os.path.getsize(payload_file_name), cloud_url, really))
 
-    upload_cmd = cloud.upload_file_cmd(s3_url, payload_file_name, metadata, transferAcceleration=not args.private_instance)
+    upload_cmd = cloud.upload_file_cmd(cloud_url, payload_file_name, metadata, transferAcceleration=not args.private_instance)
 
     if args.subcommand == 'upload' and args.dry_run:
         assert crypto_data is not None
@@ -614,7 +622,7 @@ def upload_cmd() -> None:
 
     package()
 
-    config = get_config(require_user_secret_key=args.private_instance is None)
+    config = cloud.get_config(require_user_secret_key=args.private_instance is None)
     write_metadata(args.trace_dir, config["user"], config["group"])
     upload(args.trace_dir, config)
 
@@ -648,7 +656,7 @@ def upload_package_cmd() -> None:
 
     package_file_name = args.package
 
-    config = get_config(require_user_secret_key=args.private_instance is None)
+    config = cloud.get_config(require_user_secret_key=args.private_instance is None)
     if args.from_dry_run:
         upload_dry_run_package(config, package_file_name)
     else:

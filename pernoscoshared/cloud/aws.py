@@ -6,7 +6,7 @@ import shutil
 import sys
 
 import pernoscoshared.base as base
-from . import PublicKey, PernoscoUser, PernoscoGroup, PernoscoSecretKey, PernoscoUserSecretKey, Config, strip_wrapper
+from . import *
 
 isAwsCliV2 = base.check_output(['aws', '--version']).decode('utf-8').startswith("aws-cli/2.")
 
@@ -65,7 +65,7 @@ def check_credentials_cmd(public_key: PublicKey, pernosco_user: PernoscoUser, pe
     cmd.extend(["--payload", "\"publickey=%s,user=%s,group=%s\""%(strip_wrapper(public_key), pernosco_user, pernosco_group), "/dev/null"])
     return cmd
 
-def upload_file_cmd(bucket_path: str, payload: StrPath, metadata: str, transferAcceleration: bool = False) -> List[str]:
+def upload_file_cmd(bucket_path: str, payload: StrPath, metadata: str, transferAcceleration: bool = False, **kwargs) -> List[str]:
     cmd = ["aws", "s3", "cp", "--metadata", metadata]
 
     if transferAcceleration:
@@ -74,3 +74,20 @@ def upload_file_cmd(bucket_path: str, payload: StrPath, metadata: str, transferA
     cmd.extend([str(payload), bucket_path])
 
     return cmd
+
+def get_config(require_user_secret_key: bool = True, **kwargs) -> Config:
+    user = PernoscoUser(get_config_var('user'))
+    group = PernoscoGroup(get_config_var('group'))
+    if require_user_secret_key:
+        user_secret_key = PernoscoUserSecretKey(get_config_var('user_secret_key'))
+    else:
+        config_var = get_config_var_allow_missing('user_secret_key')
+        if config_var is None:
+            user_secret_key = None
+        else:
+            user_secret_key = PernoscoUserSecretKey(config_var)
+    return {
+        "user": user,
+        "group": group,
+        "user_secret_key": user_secret_key,
+    }

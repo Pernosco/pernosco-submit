@@ -59,20 +59,3 @@ def get_config_var(name: str) -> str:
         sys.exit(1)
 
     return var
-
-def get_config(require_user_secret_key: bool = True) -> Config:
-    user = PernoscoUser(get_config_var('user'))
-    group = PernoscoGroup(get_config_var('group'))
-    if require_user_secret_key:
-        user_secret_key = PernoscoUserSecretKey(get_config_var('user_secret_key'))
-    else:
-        config_var = get_config_var_allow_missing('user_secret_key')
-        if config_var is None:
-            user_secret_key = None
-        else:
-            user_secret_key = PernoscoUserSecretKey(config_var)
-    return {
-        "user": user,
-        "group": group,
-        "user_secret_key": user_secret_key,
-    }
