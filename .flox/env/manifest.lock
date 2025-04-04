@@ -1,0 +1,629 @@
+{
+  "lockfile-version": 1,
+  "manifest": {
+    "version": 1,
+    "install": {
+      "awscli": {
+        "pkg-path": "awscli"
+      },
+      "openssl": {
+        "pkg-path": "openssl"
+      },
+      "python312": {
+        "pkg-path": "python312"
+      },
+      "rr": {
+        "pkg-path": "rr",
+        "systems": [
+          "aarch64-linux",
+          "x86_64-linux"
+        ]
+      },
+      "zstd": {
+        "pkg-path": "zstd"
+      }
+    },
+    "vars": {},
+    "hook": {},
+    "profile": {},
+    "options": {
+      "systems": [
+        "aarch64-darwin",
+        "aarch64-linux",
+        "x86_64-darwin",
+        "x86_64-linux"
+      ],
+      "allow": {
+        "licenses": []
+      },
+      "semver": {},
+      "cuda-detection": false
+    }
+  },
+  "packages": [
+    {
+      "attr_path": "awscli",
+      "broken": false,
+      "derivation": "/nix/store/2jwaqfkrp6bhhgrdhsiz2c6vjj20dkc0-awscli-1.33.13.drv",
+      "description": "Unified tool to manage your AWS services",
+      "install_id": "awscli",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "name": "awscli-1.33.13",
+      "pname": "awscli",
+      "rev": "c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "rev_count": 669741,
+      "rev_date": "2024-08-21T07:22:56Z",
+      "scrape_date": "2024-08-23T05:11:04Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.33.13",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dist": "/nix/store/pnadi2klmjbz8cdra686dnx4znk7d0av-awscli-1.33.13-dist",
+        "out": "/nix/store/r6fnls3v4hif8451axfv6239w05kff32-awscli-1.33.13"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "awscli",
+      "broken": false,
+      "derivation": "/nix/store/451683fapxv3ckq7v59jf7bsy67badhf-awscli-1.33.13.drv",
+      "description": "Unified tool to manage your AWS services",
+      "install_id": "awscli",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "name": "awscli-1.33.13",
+      "pname": "awscli",
+      "rev": "c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "rev_count": 669741,
+      "rev_date": "2024-08-21T07:22:56Z",
+      "scrape_date": "2024-08-23T05:11:04Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.33.13",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dist": "/nix/store/b769cvzzn6959gpqfp3xf7pga5w10jsi-awscli-1.33.13-dist",
+        "out": "/nix/store/hdk2942yrxraxd3jxcs4j0rnfd18mvzk-awscli-1.33.13"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "awscli",
+      "broken": false,
+      "derivation": "/nix/store/czdrxssbgz3wgsjxnc0rq35mh6jbr9wr-awscli-1.33.13.drv",
+      "description": "Unified tool to manage your AWS services",
+      "install_id": "awscli",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "name": "awscli-1.33.13",
+      "pname": "awscli",
+      "rev": "c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "rev_count": 669741,
+      "rev_date": "2024-08-21T07:22:56Z",
+      "scrape_date": "2024-08-23T05:11:04Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.33.13",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dist": "/nix/store/gkd31zszz6cq7b4pfv0wp8qh6zkg0ah1-awscli-1.33.13-dist",
+        "out": "/nix/store/yvsk0yshnv6qqqr23csp2aqan672h5n6-awscli-1.33.13"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "awscli",
+      "broken": false,
+      "derivation": "/nix/store/yazzqc4lbrpmgsg57azfy3vzv3m0g5p3-awscli-1.33.13.drv",
+      "description": "Unified tool to manage your AWS services",
+      "install_id": "awscli",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "name": "awscli-1.33.13",
+      "pname": "awscli",
+      "rev": "c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "rev_count": 669741,
+      "rev_date": "2024-08-21T07:22:56Z",
+      "scrape_date": "2024-08-23T05:11:04Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.33.13",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dist": "/nix/store/bk5nhb5sj1y6czp0730vrzmpqpy3wiin-awscli-1.33.13-dist",
+        "out": "/nix/store/zk3vn721bfx5lpz1n2lvcfz3m98kxksd-awscli-1.33.13"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "openssl",
+      "broken": false,
+      "derivation": "/nix/store/rbq9x1xivk8mrrw2ig4lj9w473nl97f4-openssl-3.0.14.drv",
+      "description": "Cryptographic library that implements the SSL and TLS protocols",
+      "install_id": "openssl",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "name": "openssl-3.0.14",
+      "pname": "openssl",
+      "rev": "c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "rev_count": 669741,
+      "rev_date": "2024-08-21T07:22:56Z",
+      "scrape_date": "2024-08-23T05:11:04Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "3.0.14",
+      "outputs_to_install": [
+        "bin",
+        "man"
+      ],
+      "outputs": {
+        "bin": "/nix/store/izhp2w0wdaz8060wrknswnb1q5f3qv3y-openssl-3.0.14-bin",
+        "dev": "/nix/store/krl24lbhshrzgd7inc7mv0qpr6n3dqx6-openssl-3.0.14-dev",
+        "doc": "/nix/store/jc6fhs1m9rnk47g9hby0c5q0cckkg9x4-openssl-3.0.14-doc",
+        "man": "/nix/store/i15hyv328xrbd5jvsljwfq92q3s3wixl-openssl-3.0.14-man",
+        "out": "/nix/store/5h6znfjz4y626f7hsqnpi9s2zaikx1bf-openssl-3.0.14"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "openssl",
+      "broken": false,
+      "derivation": "/nix/store/m5m8392bcj62db54lkirl0p0njks2w36-openssl-3.0.14.drv",
+      "description": "Cryptographic library that implements the SSL and TLS protocols",
+      "install_id": "openssl",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "name": "openssl-3.0.14",
+      "pname": "openssl",
+      "rev": "c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "rev_count": 669741,
+      "rev_date": "2024-08-21T07:22:56Z",
+      "scrape_date": "2024-08-23T05:11:04Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "3.0.14",
+      "outputs_to_install": [
+        "bin",
+        "man"
+      ],
+      "outputs": {
+        "bin": "/nix/store/zx8h9rnqvvwl36xv3pvvy91fxnsnahl7-openssl-3.0.14-bin",
+        "debug": "/nix/store/h97sv5h5hx21srl7hxqcdhgvbyk9gpcn-openssl-3.0.14-debug",
+        "dev": "/nix/store/q94i3svccgqabp0c8izrn9kwxyfcn7gk-openssl-3.0.14-dev",
+        "doc": "/nix/store/24nmzzkvcifjhlllg3jsvv5q19x7mxwi-openssl-3.0.14-doc",
+        "man": "/nix/store/3zjin6nxjz72wnbijh1328k07913nkj7-openssl-3.0.14-man",
+        "out": "/nix/store/sgcjvcgs6rj7cqp2y136ibzs4056jzkj-openssl-3.0.14"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "openssl",
+      "broken": false,
+      "derivation": "/nix/store/6qns1x22vrvymf815lmi4dgirwzqixcw-openssl-3.0.14.drv",
+      "description": "Cryptographic library that implements the SSL and TLS protocols",
+      "install_id": "openssl",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "name": "openssl-3.0.14",
+      "pname": "openssl",
+      "rev": "c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "rev_count": 669741,
+      "rev_date": "2024-08-21T07:22:56Z",
+      "scrape_date": "2024-08-23T05:11:04Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "3.0.14",
+      "outputs_to_install": [
+        "bin",
+        "man"
+      ],
+      "outputs": {
+        "bin": "/nix/store/k414q6msrf9hnx69nvl0wz6yjgj7h2yj-openssl-3.0.14-bin",
+        "dev": "/nix/store/h1k719lpdpbjhlv0g8q31l1f3d9pxvl3-openssl-3.0.14-dev",
+        "doc": "/nix/store/57p2lrjvw3ggnfwzvp0imjljvqwx8mg9-openssl-3.0.14-doc",
+        "man": "/nix/store/9x3qvsvvk24b0fr4nkgflp5sbnhxgzpb-openssl-3.0.14-man",
+        "out": "/nix/store/ymhcza3cq2svnn3rm8069xglycfxfaai-openssl-3.0.14"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "openssl",
+      "broken": false,
+      "derivation": "/nix/store/zcw9kg5w2szwi76rnrj8r79a2c5npxx3-openssl-3.0.14.drv",
+      "description": "Cryptographic library that implements the SSL and TLS protocols",
+      "install_id": "openssl",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "name": "openssl-3.0.14",
+      "pname": "openssl",
+      "rev": "c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "rev_count": 669741,
+      "rev_date": "2024-08-21T07:22:56Z",
+      "scrape_date": "2024-08-23T05:11:04Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "3.0.14",
+      "outputs_to_install": [
+        "bin",
+        "man"
+      ],
+      "outputs": {
+        "bin": "/nix/store/bcrjs0s0xp92hwmscwxlw7bksifbd6qz-openssl-3.0.14-bin",
+        "debug": "/nix/store/1ikgabb4q3fg52py0vk95ddbzrqaw8rx-openssl-3.0.14-debug",
+        "dev": "/nix/store/xznbpwh1sxaamd2srd1i80il422k6kfc-openssl-3.0.14-dev",
+        "doc": "/nix/store/ma5mdr7kqnnw7ia5f78lq1d5hdjmzj8n-openssl-3.0.14-doc",
+        "man": "/nix/store/zdcfazdbn9ccv2z7h2kvmrklrmwaqkyc-openssl-3.0.14-man",
+        "out": "/nix/store/0p6iwr6j9arbwzbwm3r34nlzy8ck82gg-openssl-3.0.14"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "python312",
+      "broken": false,
+      "derivation": "/nix/store/zyfgfgn7d4m284bzpm59wrb62v521si2-python3-3.12.4.drv",
+      "description": "High-level dynamically-typed programming language",
+      "install_id": "python312",
+      "license": "Python-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "name": "python3-3.12.4",
+      "pname": "python312",
+      "rev": "c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "rev_count": 669741,
+      "rev_date": "2024-08-21T07:22:56Z",
+      "scrape_date": "2024-08-23T05:11:04Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "python3-3.12.4",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/xnm9sbp02pp2704dvx4kb8g0yxn263pn-python3-3.12.4"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "python312",
+      "broken": false,
+      "derivation": "/nix/store/jlsjjwjycw7d266zrd13yw6idgm0z4c4-python3-3.12.4.drv",
+      "description": "High-level dynamically-typed programming language",
+      "install_id": "python312",
+      "license": "Python-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "name": "python3-3.12.4",
+      "pname": "python312",
+      "rev": "c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "rev_count": 669741,
+      "rev_date": "2024-08-21T07:22:56Z",
+      "scrape_date": "2024-08-23T05:11:04Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "python3-3.12.4",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/cglyj6nr5rcr0j9c36xqvybk5rj7hi6x-python3-3.12.4-debug",
+        "out": "/nix/store/wviq85xs5awfp75mj5sjq9mn1nkqhq12-python3-3.12.4"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "python312",
+      "broken": false,
+      "derivation": "/nix/store/02caslhwrvim14001n8ia9nbhfzwpkk6-python3-3.12.4.drv",
+      "description": "High-level dynamically-typed programming language",
+      "install_id": "python312",
+      "license": "Python-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "name": "python3-3.12.4",
+      "pname": "python312",
+      "rev": "c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "rev_count": 669741,
+      "rev_date": "2024-08-21T07:22:56Z",
+      "scrape_date": "2024-08-23T05:11:04Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "python3-3.12.4",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/dc7kp6g4s76jlfjhjdpibjfc8pglhlcs-python3-3.12.4"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "python312",
+      "broken": false,
+      "derivation": "/nix/store/qrpk6lzil9d1k1nfb7zm51dhzq3wb711-python3-3.12.4.drv",
+      "description": "High-level dynamically-typed programming language",
+      "install_id": "python312",
+      "license": "Python-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "name": "python3-3.12.4",
+      "pname": "python312",
+      "rev": "c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "rev_count": 669741,
+      "rev_date": "2024-08-21T07:22:56Z",
+      "scrape_date": "2024-08-23T05:11:04Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "python3-3.12.4",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/w2ycb82p1q4xdpm2pzcqk7k58f89wv6l-python3-3.12.4-debug",
+        "out": "/nix/store/04gg5w1s662l329a8kh9xcwyp0k64v5a-python3-3.12.4"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "rr",
+      "broken": false,
+      "derivation": "/nix/store/bb5qkm3a4wnzv1wsxk226l3gmvapxv11-rr-5.8.0.drv",
+      "description": "Records nondeterministic executions and debugs them deterministically",
+      "install_id": "rr",
+      "license": "[ MIT, BSD-2-Clause ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "name": "rr-5.8.0",
+      "pname": "rr",
+      "rev": "c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "rev_count": 669741,
+      "rev_date": "2024-08-21T07:22:56Z",
+      "scrape_date": "2024-08-23T05:11:04Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "5.8.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/g27hzpwazvm8bhpi35lqdydk2vwyhwfm-rr-5.8.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "rr",
+      "broken": false,
+      "derivation": "/nix/store/96syz4kj6xfnmgah7g567lr4wkcchcjj-rr-5.8.0.drv",
+      "description": "Records nondeterministic executions and debugs them deterministically",
+      "install_id": "rr",
+      "license": "[ MIT, BSD-2-Clause ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "name": "rr-5.8.0",
+      "pname": "rr",
+      "rev": "c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "rev_count": 669741,
+      "rev_date": "2024-08-21T07:22:56Z",
+      "scrape_date": "2024-08-23T05:11:04Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "5.8.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/89xc10sgi6rfd0qlvg04aw9hsw8d9iip-rr-5.8.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "zstd",
+      "broken": false,
+      "derivation": "/nix/store/jncz9clqi1fkb31cb2hy52rynqqjcw30-zstd-1.5.6.drv",
+      "description": "Zstandard real-time compression algorithm",
+      "install_id": "zstd",
+      "license": "[ BSD-3-Clause ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "name": "zstd-1.5.6",
+      "pname": "zstd",
+      "rev": "c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "rev_count": 669741,
+      "rev_date": "2024-08-21T07:22:56Z",
+      "scrape_date": "2024-08-23T05:11:04Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.5.6",
+      "outputs_to_install": [
+        "bin",
+        "man"
+      ],
+      "outputs": {
+        "bin": "/nix/store/vdhylxr0j46bii9kayhws8yg1w40jlpv-zstd-1.5.6-bin",
+        "dev": "/nix/store/32kf586vxdnmv918a2r02zpq2028swsj-zstd-1.5.6-dev",
+        "man": "/nix/store/bjsmj2x5a58i6fi2f4xl7r2dk5da1j9z-zstd-1.5.6-man",
+        "out": "/nix/store/kfggyk628fc4l6aj0pmf4m7m0sqwhmh7-zstd-1.5.6"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "zstd",
+      "broken": false,
+      "derivation": "/nix/store/mz5hg06r4j9jbr8vm640d3wr1i40n3av-zstd-1.5.6.drv",
+      "description": "Zstandard real-time compression algorithm",
+      "install_id": "zstd",
+      "license": "[ BSD-3-Clause ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "name": "zstd-1.5.6",
+      "pname": "zstd",
+      "rev": "c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "rev_count": 669741,
+      "rev_date": "2024-08-21T07:22:56Z",
+      "scrape_date": "2024-08-23T05:11:04Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.5.6",
+      "outputs_to_install": [
+        "bin",
+        "man"
+      ],
+      "outputs": {
+        "bin": "/nix/store/jaqp5zgp3db7dh5dl5pfvmjig646lzws-zstd-1.5.6-bin",
+        "dev": "/nix/store/jagsfj33mfymrjf3d5x8m7v6ingiq96v-zstd-1.5.6-dev",
+        "man": "/nix/store/dkqxivai4mdfrsvihla5vyd5yq5g20j7-zstd-1.5.6-man",
+        "out": "/nix/store/5yzlklvxj0dwdw8f7p8i5sbih08rg4kr-zstd-1.5.6"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "zstd",
+      "broken": false,
+      "derivation": "/nix/store/nzg185yxd73ms8vk05f4zpi8619fd5xj-zstd-1.5.6.drv",
+      "description": "Zstandard real-time compression algorithm",
+      "install_id": "zstd",
+      "license": "[ BSD-3-Clause ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "name": "zstd-1.5.6",
+      "pname": "zstd",
+      "rev": "c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "rev_count": 669741,
+      "rev_date": "2024-08-21T07:22:56Z",
+      "scrape_date": "2024-08-23T05:11:04Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.5.6",
+      "outputs_to_install": [
+        "bin",
+        "man"
+      ],
+      "outputs": {
+        "bin": "/nix/store/x1gc4kirr9ab7nppincnc82ng72awj74-zstd-1.5.6-bin",
+        "dev": "/nix/store/2j8lrskjf61dzxwwjsy5jkhpiixk91g6-zstd-1.5.6-dev",
+        "man": "/nix/store/k827jaic3bl6djf4cdy92pdi4v623pas-zstd-1.5.6-man",
+        "out": "/nix/store/qabffl2qyph40d9nga29kkkwh1hppp7p-zstd-1.5.6"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "zstd",
+      "broken": false,
+      "derivation": "/nix/store/rc7cmh7jfh5njf1dk7p8yg2596mc0vpv-zstd-1.5.6.drv",
+      "description": "Zstandard real-time compression algorithm",
+      "install_id": "zstd",
+      "license": "[ BSD-3-Clause ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "name": "zstd-1.5.6",
+      "pname": "zstd",
+      "rev": "c374d94f1536013ca8e92341b540eba4c22f9c62",
+      "rev_count": 669741,
+      "rev_date": "2024-08-21T07:22:56Z",
+      "scrape_date": "2024-08-23T05:11:04Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.5.6",
+      "outputs_to_install": [
+        "bin",
+        "man"
+      ],
+      "outputs": {
+        "bin": "/nix/store/a1cnfisfw3fk60lrwjlj2zsp6gjdb5dz-zstd-1.5.6-bin",
+        "dev": "/nix/store/5pka8lh8h9myxkxpw23cm3bvlqawb6zd-zstd-1.5.6-dev",
+        "man": "/nix/store/zgc6zwbhlw9vsyh8r0vs17lnrkjy4zpa-zstd-1.5.6-man",
+        "out": "/nix/store/61rh67clrx5gikmgsdq0zg9cyx0p4jzz-zstd-1.5.6"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    }
+  ]
+}
