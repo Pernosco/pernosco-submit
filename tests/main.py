@@ -273,6 +273,30 @@ validate_external_debuginfo()
 validate_dwos()
 cleanup_changes()
 
+testdir2 = "%s/pernosco-submit-test2"%tmpdir
+subprocess.check_call(['git', 'worktree', 'add', testdir2], cwd=testdir)
+testdir = testdir2
+subprocess.check_call(['git', 'checkout', '-q', pernosco_submit_test_git_revision], cwd=testdir)
+# git worktree ignores submodules so get those up and running.
+subprocess.check_call(['git', 'submodule', 'update'], cwd=testdir)
+make_changes()
+build()
+create_extra_rr_trace_files()
+record(clean_env)
+assert submit_dry_run().returncode == 0
+validate_dry_run()
+validate_producer_metadata()
+validate_files_user()
+validate_extra_rr_trace_files()
+github_raw_url = 'https://raw.githubusercontent.com/Pernosco/pernosco-submit-test/%s/'%pernosco_submit_test_git_revision
+validate_sources_user(github_raw_url, submodule_repo_url="https://raw.githubusercontent.com/Pernosco/pernosco-submit-test-submodule/%s/"%pernosco_submit_test_submodule_git_revision, submodule_private_repo_url="https://raw.githubusercontent.com/Pernosco/pernosco-submit-test-private-submodule/%s/"%pernosco_submit_test_submodule_private_git_revision)
+validate_sources_zip()
+validate_libthread_db()
+validate_external_debuginfo()
+validate_dwos()
+cleanup_changes()
+
+testdir = "%s/pernosco-submit-test"%tmpdir
 # Check pernosco-submit bails out when sensitive environment variables are present in the trace
 for k in ['SSHPASS', 'AWS_SECRET_ACCESS_KEY', 'PERNOSCO_USER_SECRET_KEY']:
     unclean_env = dict(clean_env)
