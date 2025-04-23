@@ -1,0 +1,26 @@
+#
+# This is a Flox environment manifest.
+# Visit flox.dev/docs/concepts/manifest/
+# or see flox-edit(1), manifest.toml(5) for more information.
+#
+version = 1
+
+[install]
+awscli.pkg-path = "awscli"
+openssl.pkg-path = "openssl"
+zstd.pkg-path = "zstd"
+rr.pkg-path = "rr"
+rr.systems = ["aarch64-linux", "x86_64-linux"]
+python312.pkg-path = "python312"
+
+[vars]
+
+[hook]
+
+[profile]
+
+[services]
+
+[options]
+systems = ["aarch64-darwin", "aarch64-linux", "x86_64-darwin", "x86_64-linux"]
+cuda-detection = false
