@@ -77,6 +77,7 @@ def hg_remote_url_to_source_url_generator(remote_url: str) -> Optional[UrlGenera
 github_re: Pattern[str] = re.compile('(https://github.com/|git@github.com:)([^/]+)/(.*)')
 gitlab_re: Pattern[str] = re.compile('(https://gitlab.com/|git@gitlab.com:)([^/]+)/(.*)')
 googlesource_re: Pattern[str] = re.compile('https://([^.]+.googlesource.com)/(.*)')
+chromium_sso_re: Pattern[str] = re.compile('sso://chromium/(.*)')
 
 def strip(s: str, m: str) -> str:
     if s.endswith(m):
@@ -87,6 +88,14 @@ def cinnabar_hg_rev(git_rev: str, repo_path: str) -> str:
     return base.check_output(['git', 'cinnabar', 'git2hg', git_rev], cwd=repo_path).decode('utf-8').split()[0]
 
 def git_remote_url_to_source_url_generator(remote_url: str, repo_path: str) -> Optional[UrlGenerator]:
+    # Google employees use a global git insteadOf to rewrite public chromium.googlesource.com URLs
+    # to private sso://chromium/ URLs. Undo that here.
+    m = chromium_sso_re.match(remote_url)
+    if m:
+        # Capture so it can't change in the lambda
+        mm = m
+        # Don't return, just write and keep going.
+        remote_url = "https://chromium.googlesource.com/%s"%(mm.group(1))
     m = github_re.match(remote_url)
     if m:
         # Capture so it can't change in the lambda
