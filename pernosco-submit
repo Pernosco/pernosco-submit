@@ -56,6 +56,7 @@ upload_subparser.add_argument("--no-local-sources", action='store_true', help="D
 upload_subparser.add_argument("--substitute", metavar='LIB=WITH_PATH', action='append', default=[], help="Override the DW_AT_comp_dir for compilation units of the named library to the named path. Adds WITH_PATH to the allowed source paths. LIB must be the basename of the original name of the library, e.g. 'libc-2.32.so'.")
 upload_subparser.add_argument("--copy-sources", action='append', default=[], help="Copy sources under this directory into the recording")
 upload_subparser.add_argument("--dry-run", metavar="PATH", help="Instead of uploading the package, copies it to the given path. Also writes the command/env to <path>.cmd.")
+upload_subparser.add_argument("--spidermonkey", action='store_true', help=argparse.SUPPRESS)
 upload_subparser.add_argument("trace_dir")
 upload_subparser.add_argument("source_dirs", nargs="*")
 
@@ -64,6 +65,7 @@ package_subparser.add_argument("--build-dir", help="Specify build directory to u
 package_subparser.add_argument("--no-local-sources", action='store_true', help="Don't try to upload any locally modified or generated sources")
 package_subparser.add_argument("--substitute", metavar='LIB=WITH_PATH', action='append', default=[], help="Override the DW_AT_comp_dir for compilation units of the named library to the named path. Adds WITH_PATH to the allowed source paths. LIB must be the basename of the original name of the library, e.g. 'libc-2.32.so'.")
 package_subparser.add_argument("--copy-sources", action='append', default=[], help="Copy sources under this directory into the recording")
+package_subparser.add_argument("--spidermonkey", action='store_true', help=argparse.SUPPRESS)
 package_subparser.add_argument("package_file")
 package_subparser.add_argument("trace_dir")
 package_subparser.add_argument("source_dirs", nargs="*")
@@ -610,6 +612,11 @@ def package() -> None:
     packaging.package_libthread_db()
     packaging.package_extra_rr_trace_files()
     packaging.package_mozilla_application_ini()
+    if args.spidermonkey:
+        os.makedirs("%s/files.mozilla"%args.trace_dir, exist_ok=True)
+        with open("%s/files.mozilla/spidermonkey"%args.trace_dir, 'a'):
+            pass
+
     repo_paths = sources.package_source_files(source_dirs, copy_source_dirs, comp_dir_substitutions, args.build_dir)
     sources.package_gdbinit(repo_paths, "%s/gdbinit"%args.trace_dir)
 
